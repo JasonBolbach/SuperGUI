@@ -17,6 +17,13 @@ Add to `platformio.ini`:
 
 ```ini
 lib_deps =
+    jasonbolbach/SuperGUI@^1.2.0
+```
+
+or straight from GitHub:
+
+```ini
+lib_deps =
     https://github.com/JasonBolbach/SuperGUI.git#v1.2.0
 ```
 
