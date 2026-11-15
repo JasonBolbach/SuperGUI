@@ -1,12 +1,13 @@
 # SuperGUI
 
-Header-only input helpers for Arduino-framework microcontrollers.
+Header-only input helpers and LovyanGFX UI controls for Arduino-framework microcontrollers: debounced buttons, accelerated rotary encoders, touch gestures, and a form of ready-made controls (input/spin/list/combo/menu/tabs/slider/color picker and more) driven by any of them.
 
 | Header | What it does |
 |---|---|
 | `SuperButton.h` | Debounced button: short / medium / long click plus a double-click flag. Any number of buttons, all serviced by one background timer. |
 | `SuperEncoder.h` | Quadrature rotary encoder with bounce rejection and 3-speed acceleration (slow / medium / fast). Interrupt-driven. |
 | `SuperTouch.h` | Single-touch gestures (short / medium / long click, drag) from a touch-read function you supply. |
+| `SuperForm.h` / `Super<Thing>.h` | LovyanGFX UI controls and a focus manager; see [UI controls](#ui-controls-lovyangfx). Requires LovyanGFX. |
 
 **Platforms:** ESP32 (all variants) and RP2040 / RP2350 with the arduino-pico core are timer/interrupt-driven. Other boards fall back to polling (see below).
 
@@ -16,10 +17,10 @@ Add to `platformio.ini`:
 
 ```ini
 lib_deps =
-    https://github.com/JasonBolbach/SuperGUI.git#v1.1.0
+    https://github.com/JasonBolbach/SuperGUI.git#v1.2.0
 ```
 
-Drop `#v1.1.0` to always track the latest commit on `main`.
+Drop `#v1.2.0` to always track the latest commit on `main`.
 
 ## SuperButton
 

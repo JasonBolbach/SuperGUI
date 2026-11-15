@@ -2,7 +2,7 @@
   "name": "SuperGUI",
   "version": "1.2.0",
   "description": "Header-only input helpers for microcontrollers: debounced buttons with click-length and double-click detection, accelerated quadrature encoders, and single-touch gestures. Plus a set of LovyanGFX UI controls (input box, spin box, list, combo, menu, tabs, slider, color picker, ...).",
-  "keywords": "button, debounce, click, encoder, rotary, quadrature, touch, gesture, drag, esp32, rp2040, pico",
+  "keywords": "button, debounce, click, encoder, rotary, quadrature, touch, gesture, drag, gui, ui, widgets, controls, form, lovyangfx, display, tft, esp32, rp2040, pico",
   "repository": {
     "type": "git",
     "url": "https://github.com/JasonBolbach/SuperGUI.git"
@@ -15,11 +15,11 @@
   ],
   "license": "MIT",
   "homepage": "https://github.com/JasonBolbach/SuperGUI",
-  "dependencies": [{"name": "LovyanGFX"}],
+  "dependencies": [{"owner": "lovyan03", "name": "LovyanGFX", "version": "^1.2.21"}],
   "frameworks": "arduino",
   "platforms": "*",
   "headers": ["SuperButton.h", "SuperEncoder.h", "SuperTouch.h", "SuperControl.h", "SuperForm.h"],
   "export": {
-    "exclude": [".github", ".vscode"]
+    "exclude": [".github", ".vscode", ".DS_Store", "**/.DS_Store", "build", "tools", "**/.pio", "**/build"]
   }
 }
