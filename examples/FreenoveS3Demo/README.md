@@ -11,7 +11,7 @@ a rotary encoder and two buttons.
    `src/main.cpp`. Encoder turns the wrong way? Swap `PIN_ENC_A` and `PIN_ENC_B`. `USE_TOUCH = false` turns touch off. `USE_ENCODER = false` (the default here) leaves the encoder unused, so touch and the buttons drive the UI.
    The placeholder pins avoid the placeholder LCD / touch pins only; check them against your board's schematic
    (flash and octal PSRAM use GPIO 26-37 on this module, so don't use those).
-3. **Library:** `platformio.ini` uses the local clone `~/Documents/lib/SuperGUI`; switch to the GitHub URL line when you prefer.
+3. **Library:** `platformio.ini` pulls SuperGUI from the PlatformIO registry (`jasonbolbach/SuperGUI`); a commented `symlink://` line is there for building against a local checkout.
 
 `pio run -e esp32s3 -t upload`
 
