@@ -14,6 +14,7 @@
 
 class SuperColorPicker : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::ColorPicker; }
     SuperColorPicker(lgfx::LovyanGFX* dst, int x, int y, int width, const lgfx::IFont* font,
                      SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB)
         : SuperControl(dst, x, y, width, font), IO(enc, btnA, btnB) {}

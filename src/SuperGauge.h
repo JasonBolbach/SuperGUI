@@ -33,6 +33,7 @@
 
 class SuperGauge : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::Gauge; }
     enum NeedleStyle : uint8_t { NEEDLE_TAPER = 0, NEEDLE_LINE };
 
     uint16_t ColTrack  = 0x2104;           // the dial track where no zone covers it

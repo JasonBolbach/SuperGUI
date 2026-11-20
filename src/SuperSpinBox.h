@@ -18,6 +18,7 @@
 
 class SuperSpinBox : public SuperTextBox {
 public:
+    ControlType GetControlType() const override { return ControlType::SpinBox; }
     bool ShowTouchHints = true;         // draw "-" and "+" at the ends while editing (touch zones)
 
     SuperSpinBox(lgfx::LovyanGFX* dst, int x, int y, int width, const lgfx::IFont* font,

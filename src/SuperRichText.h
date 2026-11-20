@@ -21,6 +21,7 @@
 
 class SuperRichText : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::RichText; }
     SuperRichText(lgfx::LovyanGFX* dst, int x, int y, int width, int bodyHeight, const lgfx::IFont* font,
                   SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB)
         : SuperControl(dst, x, y, width, font), BodyH(bodyHeight < 8 ? 8 : bodyHeight), IO(enc, btnA, btnB) {}

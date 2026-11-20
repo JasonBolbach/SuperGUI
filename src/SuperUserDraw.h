@@ -49,6 +49,7 @@ typedef void (*SuperUserPointerFn)(SuperUserDraw& ctl, const SuperUserPointer& e
 
 class SuperUserDraw : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::UserDraw; }
     int PointerGraceMs = 150;              // a key-started edit (no touch) with no finger down ends after this long
 
     // width = control width, bodyHeight = height of the drawing area. 'font' only sets the default label font.

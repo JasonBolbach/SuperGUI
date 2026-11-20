@@ -12,6 +12,7 @@
 
 class SuperTabBar : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::TabBar; }
     int TabPad = 6;                                  // padding left and right of each tab's text
 
     SuperTabBar(lgfx::LovyanGFX* dst, int x, int y, int width, const lgfx::IFont* font,

@@ -14,6 +14,7 @@
 
 class SuperCheckBox : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::CheckBox; }
     uint16_t ColCheck = 0xFFFF;                 // the check mark / radio dot
 
     SuperCheckBox(lgfx::LovyanGFX* dst, int x, int y, int width, const lgfx::IFont* font, const std::string& caption)

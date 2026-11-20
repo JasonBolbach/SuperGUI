@@ -23,6 +23,7 @@
 //  * Drawing order: SuperControl::SetZOrder(n). The lowest number is in front (drawn last); equal numbers keep the order they were added.
 //    Touch hits the front-most control first. Focus order: SuperControl::SetTabOrder(n). The encoder visits the lowest number first;
 //    equal numbers keep the order they were added. Until you call SetFocus() (or touch a control) the first control in focus order has the focus.
+//  * form.ControlAt(x, y [, pad]) returns the front-most visible control at a point (or nullptr): for your own hit tests, inspection tools, designers.
 //  * Modal controls (SuperMessageBox) can be run with BeginEdit() from your own code; call form.Draw() afterwards.
 #include "SuperControl.h"
 #include "SuperEditIO.h"
@@ -48,6 +49,16 @@ public:
         if (Focus < 0 && Can((int)Items.size() - 1)) Focus = (int)Items.size() - 1;
     }
     int  Count() const { return (int)Items.size(); }
+    // The front-most visible control under the point (x, y), or nullptr. Disabled and display-only controls count too (check IsEnabled() if it matters);
+    // hidden ones do not. Overlaps are settled by the drawing order (SetZOrder, then the order added). `pad` widens every control's area on all sides.
+    SuperControl* ControlAt(int x, int y, int pad = 0) {
+        const std::vector<int>& o = Order(true);
+        for (int k = (int)o.size() - 1; k >= 0; --k) {            // the last in drawing order is on top
+            SuperControl* c = Items[o[k]].C;
+            if (c->IsVisible() && c->HitTest(x, y, pad)) return c;
+        }
+        return nullptr;
+    }
     int  GetFocus() const { return Focus; }
     SuperControl* GetFocused() const { return Focus >= 0 ? Items[Focus].C : nullptr; }
     SuperControl* GetActive() const { return Active; }

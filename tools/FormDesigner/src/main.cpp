@@ -44,6 +44,7 @@ static inline int unsetenv(const char* n) { return _putenv_s(n, ""); }
 #include "MessageBoxEditor.h"
 #include "HelpDialog.h"
 #include "RichTextEditor.h"
+#include "ContextMenu.h"
 #include "DesignerScrollBar.h"
 #include "AppSettings.h"
 #include <SuperSpinBox.h>
@@ -572,6 +573,38 @@ static void DeleteSel() {
     Status("deleted %s", Sel()->name.c_str());
     form.items.erase(form.items.begin() + sel); sel = -1; BuildFields();
 }
+// ---- the right-click menu on a control: delete, centre on the form, to the front / back ----
+static FD::ContextMenu* ctxMenu = nullptr;
+enum { CX_DELETE = 1, CX_HCENTER, CX_VCENTER, CX_BOTH, CX_FRONT, CX_BACK };
+static void OpenContextMenu(int mx, int my) {
+    DControl* c = Sel(); if (!c) return;
+    bool front = sel == (int)form.items.size() - 1, back = sel == 0;
+    delete ctxMenu;
+    ctxMenu = new FD::ContextMenu(&scr, mx, my, {
+        { "Delete", CX_DELETE, true }, { "", 0, false },
+        { "Center horizontally", CX_HCENTER, true }, { "Center vertically", CX_VCENTER, true }, { "Center both", CX_BOTH, true }, { "", 0, false },
+        { "Bring to front", CX_FRONT, !front }, { "Send to back", CX_BACK, !back } });
+    drag = D_NONE; focus = -1; dirty = true;
+}
+static void CentreSel(bool h, bool v) {              // centre the selected control on the form
+    DControl* c = Sel(); if (!c) return;
+    if (h) c->x = (form.w - c->w) / 2;
+    if (v) c->y = (form.h - c->h) / 2;
+    ClampPos(*c); SyncFields(); dirty = true;
+    Status("%s centered %s (x %d, y %d)", c->name.c_str(), h && v ? "both ways" : h ? "horizontally" : "vertically", c->x, c->y);
+}
+static void CloseContextMenu() {
+    int id = ctxMenu->state == FD::ContextMenu::CHOSEN ? ctxMenu->chosen : 0;
+    delete ctxMenu; ctxMenu = nullptr; dirty = true;
+    switch (id) {
+    case CX_DELETE: DeleteSel(); break;
+    case CX_HCENTER: CentreSel(true, false); break;
+    case CX_VCENTER: CentreSel(false, true); break;
+    case CX_BOTH: CentreSel(true, true); break;
+    case CX_FRONT: MoveSel(2); break;
+    case CX_BACK: MoveSel(3); break;
+    }
+}
 static void Nudge(int dx, int dy) { if (DControl* c = Sel()) { c->x += dx; c->y += dy; ClampPos(*c); SyncFields(); } }
 static int HitControl(int fx, int fy) {              // topmost control under a form coordinate
     for (int i = (int)form.items.size() - 1; i >= 0; --i) {
@@ -851,12 +884,14 @@ static void Render() {
     if (boxDlg) boxDlg->Draw(SDL_GetTicks());
     if (helpDlg) helpDlg->Draw(SDL_GetTicks());
     if (richDlg) richDlg->Draw(SDL_GetTicks());
+    if (ctxMenu) ctxMenu->Draw();
     scr.pushSprite(lcd, 0, 0);
     dirty = false;
 }
 
 // ---- input ----
 static void Handle(const InputEvent& e) {
+    if (ctxMenu) { ctxMenu->Event(e); dirty = true; if (ctxMenu->state != FD::ContextMenu::OPEN) CloseContextMenu(); return; }      // the pop-up menu gets every event until it closes
     if (richDlg) { richDlg->Event(e); dirty = true; if (richDlg->state != FD::RichTextEditor::OPEN) CloseRichDialog(); return; }
     if (helpDlg) { helpDlg->Event(e); dirty = true; if (!helpDlg->open) { delete helpDlg; helpDlg = nullptr; } return; }
     if (boxDlg) { boxDlg->Event(e); dirty = true; if (boxDlg->state != FD::MessageBoxEditor::OPEN) CloseBoxDialog(); return; }
@@ -904,6 +939,11 @@ static void Handle(const InputEvent& e) {
         SyncFields();
         break; }
     case InputEvent::DOWN: {
+        if (e.button == SDL_BUTTON_RIGHT) {                                        // right-click on a control: select it and pop up its menu (with a tool picked: drop the tool)
+            if (tool >= 0) { tool = -1; dirty = true; break; }
+            if (e.x >= VX && e.x < VX + VW && e.y >= VY && e.y < VY + VH) { int i = HitControl(ToFX(e.x), ToFY(e.y)); if (i >= 0) { SetFocus(-1); Select(i); OpenContextMenu(e.x, e.y); } }
+            break;
+        }
         if (e.button != SDL_BUTTON_LEFT) break;
         if (InRect(e.x, e.y, ViewX(), RowBtnY(), VIEW_W, RowBtnH())) {         // the design view: All -> each control group in turn -> All
             SetFocus(-1); std::vector<std::string> gs = form.UsedGroups(); size_t at = 0;
@@ -1288,6 +1328,17 @@ static void SelfTest() {
         int hBefore = L0.h;
         Seg(P_BSTYLE, 2); Check(L0.borderStyle == 2 && ToJsonHas(form, "\"borderStyle\": \"sleek\""), "layout: clicking Sleek sets the border style (and it is saved)");
         { auto c = MakeControl(&scr, L0, 0, 0); Check(c->GetBorderStyle() == SuperControl::BORDER_SLEEK, "layout: the real control gets the border style"); }
+        {   // SuperForm::ControlAt (the library): front-most visible control at a point
+            SuperForm sf(nullptr, nullptr); SuperLabel a(&scr, 10, 10, 100, &lgfx::fonts::Font2, "a"), b(&scr, 60, 10, 100, &lgfx::fonts::Font2, "b"), c(&scr, 300, 10, 50, &lgfx::fonts::Font2, "c");
+            sf.Add(&a, false); sf.Add(&b, false); sf.Add(&c, false);
+            Check(sf.ControlAt(20, 12) == &a && sf.ControlAt(120, 12) == &b && sf.ControlAt(310, 12) == &c, "ControlAt: finds the control under the point");
+            Check(sf.ControlAt(80, 12) == &b, "ControlAt: where two overlap, the one added last (drawn on top) wins");
+            a.SetZOrder(-1); Check(sf.ControlAt(80, 12) == &a, "ControlAt: ... unless the other has a lower z-order number (in front)");
+            a.SetZOrder(0); Check(sf.ControlAt(200, 200) == nullptr && sf.ControlAt(5, 12) == nullptr, "ControlAt: nothing there gives nullptr");
+            Check(sf.ControlAt(5, 12, 6) == &a && sf.ControlAt(5, 12, 4) == nullptr, "ControlAt: pad widens the hit area");
+            b.SetVisible(false, false); Check(sf.ControlAt(80, 12) == &a && sf.ControlAt(120, 12) == nullptr, "ControlAt: hidden controls are skipped");
+            c.SetEnabled(false); Check(sf.ControlAt(310, 12) == &c, "ControlAt: disabled controls are still found");
+        }
         Seg(P_BSTYLE, 0); Check(L0.borderStyle == -1 && !ToJsonHas(form, "borderStyle"), "layout: choosing the default again removes the override");
         Seg(P_ALIGN, 1); Check(L0.align == 1, "layout: clicking Center sets the alignment");
         Seg(P_ALIGN, 0); Check(L0.align == -1, "layout: choosing the default alignment removes the override");
@@ -2615,6 +2666,35 @@ static void SelfTest() {
             { std::string g = GenerateDesigner(form); Check(g.find("Form.Add(&c1") < g.find("Form.Add(&c3") && g.find("Form.Add(&c4") < g.find("Form.Add(&c2"), "order: the code adds the controls in that order (the last is in front)"); }
             for (int i = 0; i < 12; ++i) { Place(C_LABEL, 8, 8); } Select(0); Ob(2); Check(sel == (int)form.items.size() - 1 && treeFirst + TreeRows() > sel && treeFirst <= sel, "order: the list scrolls to show the moved control");
             form.Clear(); sel = -1; treeFirst = 0; BuildFields();
+        }
+        {   // the right-click menu
+            form.Clear(); for (int k = 0; k < 3; ++k) { Place(C_LABEL, 8, 8); form.items.back().name = "m" + std::to_string(k + 1); form.items.back().x = 10 + k * 80; form.items.back().y = 10; form.items.back().w = 60; } sel = -1; BuildFields();
+            auto RClick = [&](int x, int y) { InputEvent v = ev(InputEvent::DOWN, x, y); v.button = SDL_BUTTON_RIGHT; Handle(v); v.type = InputEvent::UP; Handle(v); };
+            auto sx = [&](const DControl& c) { return FormOX() + Zc(c.x) + 5; }; auto sy = [&](const DControl& c) { return FormOY() + Zc(c.y) + 5; };
+            auto Pick = [&](int id) { int row = id == CX_DELETE ? 0 : id == CX_HCENTER ? 2 : id == CX_VCENTER ? 3 : id == CX_BOTH ? 4 : id == CX_FRONT ? 6 : 7; Click(ctxMenu->Left() + 10, ctxMenu->RowY(row) + 4); };
+            RClick(FormOX() + Zc(300), FormOY() + Zc(100)); Check(ctxMenu == nullptr, "context menu: a right-click on empty form space opens nothing");
+            RClick(sx(form.items[1]), sy(form.items[1])); Check(ctxMenu != nullptr && sel == 1, "context menu: a right-click on a control selects it and opens the menu");
+            Handle(ev(InputEvent::DOWN, 5, 5)); Check(ctxMenu == nullptr && form.items.size() == 3 && sel == 1, "context menu: a click outside closes it and does nothing else");
+            RClick(sx(form.items[1]), sy(form.items[1])); { InputEvent k; k.type = InputEvent::KEY_DOWN; k.key = SDLK_ESCAPE; Handle(k); } Check(ctxMenu == nullptr && form.items.size() == 3, "context menu: Esc closes it");
+            RClick(sx(form.items[1]), sy(form.items[1])); Pick(CX_HCENTER); Check(ctxMenu == nullptr && form.items[1].x == (form.w - form.items[1].w) / 2 && form.items[1].y == 10, "context menu: Center horizontally centres on the form width only");
+            RClick(sx(form.items[1]), sy(form.items[1])); Pick(CX_VCENTER); Check(form.items[1].y == (form.h - form.items[1].h) / 2, "context menu: Center vertically centres on the form height");
+            form.items[1].x = 20; form.items[1].y = 20; RClick(sx(form.items[1]), sy(form.items[1])); Pick(CX_BOTH); Check(form.items[1].x == (form.w - form.items[1].w) / 2 && form.items[1].y == (form.h - form.items[1].h) / 2, "context menu: Center both does both");
+            form.items[1].x = 90; form.items[1].y = 10; Select(0); RClick(sx(form.items[0]), sy(form.items[0])); Pick(CX_FRONT);
+            Check(form.items.back().name == "m1" && sel == 2, "context menu: Bring to front moves the control last");
+            RClick(sx(form.items[2]), sy(form.items[2])); Pick(CX_BACK); Check(form.items[0].name == "m1" && sel == 0, "context menu: Send to back moves the control first");
+            RClick(sx(form.items[0]), sy(form.items[0])); int before = sel; Click(ctxMenu->Left() + 10, ctxMenu->RowY(7) + 4); Check(ctxMenu != nullptr && sel == before && form.items[0].name == "m1", "context menu: a greyed row (Send to back on the back control) does nothing and the menu stays open"); { InputEvent k; k.type = InputEvent::KEY_DOWN; k.key = SDLK_ESCAPE; Handle(k); }
+            RClick(sx(form.items[0]), sy(form.items[0])); Pick(CX_DELETE); Check(form.items.size() == 2 && sel == -1, "context menu: Delete removes the control");
+            tool = 0; RClick(300, 300); Check(tool == -1 && ctxMenu == nullptr, "context menu: a right-click with a tool picked drops the tool");
+            form.Clear(); sel = -1; BuildFields();
+        }
+        {   // SuperControl::GetControlType
+            using CT = SuperControl::ControlType;
+            { form.Clear(); bool all = true; std::vector<int> seen; CT want[C_COUNT] = { CT::Label, CT::PushButton, CT::CheckBox, CT::RadioButton, CT::ProgressBar, CT::SpinBox, CT::Slider, CT::TextBox, CT::InputBox, CT::TimeBox, CT::DateBox, CT::ListBox, CT::ComboBox, CT::TabBar, CT::Menu, CT::Gauge, CT::Graph, CT::UserDraw, CT::ColorPicker, CT::RichText };
+              for (int t = 0; t < C_COUNT; ++t) { form.Clear(); Place(t, 8, 8); auto k = MakeControl(&scr, form.items[0], 0, 0); CT got = k->GetControlType(); all = all && got == want[t] && got != CT::User; seen.push_back((int)got); }
+              std::sort(seen.begin(), seen.end()); bool uniq = std::unique(seen.begin(), seen.end()) == seen.end();
+              Check(all && uniq, "control type: every control the designer can make reports its own, different ControlType (a SpinBox is a SpinBox, not a TextBox)");
+              form.Clear(); sel = -1; BuildFields(); }
+            { SuperLabel l(&scr, 0, 0, 40, &lgfx::fonts::Font2, "x"); SuperControl* base = &l; Check(base->GetControlType() == CT::Label && static_cast<SuperLabel*>(base)->GetText() == "x", "control type: from a SuperControl* the type tells which class to cast to"); }
         }
         { form.Clear(); form.w = 5000; form.h = 5000; Check(MAX_FORM_W == 1920 && MAX_FORM_H == 1080, "size: the largest form is 1920 x 1080"); form.w = MAX_FORM_W; form.h = MAX_FORM_H; DForm lf; std::string le; Check(lf.FromJson(form.ToJson(), le) && lf.w == 1920 && lf.h == 1080, "size: a 1920 x 1080 form is saved and loaded");
           lf.FromJson("{\"form\":{\"width\":99999,\"height\":99999},\"controls\":[]}", le); Check(lf.w == 1920 && lf.h == 1080, "size: a file asking for more is cut to 1920 x 1080");

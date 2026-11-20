@@ -7,6 +7,7 @@
 
 class SuperPushButton : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::PushButton; }
     int PressMs = 50;                               // how long the inverted face is shown (SuperTheme::PressMs)
 
     SuperPushButton(lgfx::LovyanGFX* dst, int x, int y, int width, const lgfx::IFont* font, const std::string& caption)

@@ -60,6 +60,11 @@ public:
     enum Align       : uint8_t { ALIGN_LEFT = 0, ALIGN_CENTER, ALIGN_RIGHT };
     enum BorderStyle : uint8_t { BORDER_STANDARD = 0, BORDER_THREED, BORDER_SLEEK };
     enum LabelPos    : uint8_t { LABEL_ABOVE = 0, LABEL_BELOW };
+    // What a control really is, for code that holds a SuperControl* (e.g. from SuperForm::ControlAt) and wants the derived class: check GetControlType(),
+    // then static_cast. (No RTTI / dynamic_cast needed.) Each library control reports its own type, so a SpinBox is ControlType::SpinBox, not TextBox, even
+    // though it derives from SuperTextBox. Your own subclasses report User unless they override GetControlType().
+    enum class ControlType : uint8_t { User = 0, Label, PushButton, CheckBox, RadioButton, ProgressBar, SpinBox, Slider, TextBox, InputBox, FieldBox, TimeBox, DateBox,
+                                       ListBox, ComboBox, TabBar, Menu, Gauge, Graph, UserDraw, ColorPicker, RichText, MessageBox };
 
     // ---- colours (RGB565) ----
     uint16_t ColBg           = 0x0000;
@@ -186,6 +191,7 @@ public:
     SuperControl(lgfx::LovyanGFX* dst, int x, int y, int width, const lgfx::IFont* font)
         : Spr(dst), Dst(dst), PosX(x), PosY(y), W(width < 1 ? 1 : width), Font(font), LabelFont(font) {}
     virtual ~SuperControl() = default;
+    virtual ControlType GetControlType() const { return ControlType::User; }
     SuperControl(const SuperControl&) = delete;
     SuperControl& operator=(const SuperControl&) = delete;
 

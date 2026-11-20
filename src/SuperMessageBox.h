@@ -21,6 +21,7 @@
 
 class SuperMessageBox : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::MessageBox; }
     SuperMessageBox(lgfx::LovyanGFX* dst, int width, const lgfx::IFont* font,
                     SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB)
         : SuperControl(dst, 0, 0, width, font), IO(enc, btnA, btnB), Under(dst)

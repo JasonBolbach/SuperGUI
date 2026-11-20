@@ -89,6 +89,7 @@ public:
         "Click a toolbox item,<br>then click the form<tab>Place a control\n"
         "Click a control<tab>Select it (click empty space: nothing)\n"
         "Drag a control<tab>Move it (snaps to the grid)\n"
+        "Right-click a control<tab>Select it and pop up a menu: Delete, Center horizontally / vertically / both<br>(on the form), Bring to front, Send to back\n"
         "Drag a side handle<tab>Change its width\n"
         "Drag a top / bottom handle<tab>Change the height of a list, menu, gauge, graph,<br>user draw or rich text (lists, menus and rich text<br>snap to whole rows / lines); or type the Height row\n"
         "Arrows<tab>Nudge 1 pixel (Shift: one grid step)\n"

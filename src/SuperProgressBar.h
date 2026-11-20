@@ -7,6 +7,7 @@
 
 class SuperProgressBar : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::ProgressBar; }
     uint16_t ColBar   = 0x07E0;         // fill
     bool     ShowPercent = true;        // the percentage is shown at all
 

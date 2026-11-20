@@ -25,6 +25,7 @@
 
 class SuperMenu : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::Menu; }
     struct Item {
         std::string Text;
         int  Id = 0;

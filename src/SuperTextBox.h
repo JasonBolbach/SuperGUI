@@ -11,6 +11,7 @@
 
 class SuperTextBox : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::TextBox; }
     struct CellStyle {
         uint16_t fg;
         uint16_t bg = 0;

@@ -20,6 +20,7 @@
 
 class SuperListBox : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::ListBox; }
     bool     Wrap        = false;       // cursor wraps from last to first item
     int      RowPad      = 1;           // extra pixels above and below each row's text
 

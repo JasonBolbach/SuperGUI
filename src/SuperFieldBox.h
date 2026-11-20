@@ -20,6 +20,7 @@
 
 class SuperFieldBox : public SuperTextBox {
 public:
+    ControlType GetControlType() const override { return ControlType::FieldBox; }
     uint16_t ColLiteral = 0xBDF7;          // separators
     bool     TouchAcceptOnLift = true;
 

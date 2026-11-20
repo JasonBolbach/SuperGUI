@@ -263,6 +263,14 @@ Two per-control numbers used by `SuperForm` (both default to 0 = the order the c
 * `SetZOrder(n)` - drawing order for controls that overlap. The **lowest number is in front** (drawn last); equal numbers are drawn in list order. Touch hits the front-most control first.
 * `SetTabOrder(n)` - focus order. The encoder visits the lowest number first and wraps; equal numbers are visited in list order. Until you call `form.SetFocus()` (or touch a control) the first control in this order has the focus.
 
+`form.ControlAt(x, y)` returns the front-most visible control under a point (nullptr if none), using the same drawing order; `form.ControlAt(x, y, pad)` widens every control's area by `pad` pixels. Disabled and display-only controls are found too; hidden ones are not.
+
+`control->GetControlType()` says which class a `SuperControl*` really is, without RTTI: `ControlType::Label`, `PushButton`, `TextBox`, `SpinBox`, `ListBox`, `Menu` ... (`User` for your own subclasses unless they override it). Each library control reports its own type (a `SuperSpinBox` is `SpinBox`, not `TextBox`), so a check followed by a `static_cast` is safe:
+```cpp
+SuperControl* c = form.ControlAt(x, y);
+if (c && c->GetControlType() == SuperControl::ControlType::TextBox) static_cast<SuperTextBox*>(c)->SetText("hello");
+```
+
 ## SuperGauge
 A display-only dial (`form.Add(&gauge, false)`), like the progress bar. Full description at the top of `src/SuperGauge.h`; `examples/GaugeExample` and the Draw page of the demos show it.
 

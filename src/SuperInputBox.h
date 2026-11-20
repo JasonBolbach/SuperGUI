@@ -27,6 +27,7 @@
 
 class SuperInputBox : public SuperTextBox {
 public:
+    ControlType GetControlType() const override { return ControlType::InputBox; }
     uint16_t ColLiteral  = 0xBDF7;      // template literals
     bool     TrimRight   = true;        // GetValue() drops trailing spaces (the box itself still shows them)
 

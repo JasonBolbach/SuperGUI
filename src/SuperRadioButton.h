@@ -20,6 +20,7 @@ class SuperRadioGroup;
 
 class SuperRadioButton : public SuperCheckBox {
 public:
+    ControlType GetControlType() const override { return ControlType::RadioButton; }
     SuperRadioButton(lgfx::LovyanGFX* dst, int x, int y, int width, const lgfx::IFont* font, const std::string& caption)
         : SuperCheckBox(dst, x, y, width, font, caption) {}
 

@@ -12,6 +12,7 @@
 
 class SuperTimeBox : public SuperFieldBox {
 public:
+    ControlType GetControlType() const override { return ControlType::TimeBox; }
     SuperTimeBox(lgfx::LovyanGFX* dst, int x, int y, int width, const lgfx::IFont* font,
                  SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB, bool seconds = true)
         : SuperFieldBox(dst, x, y, width, font, enc, btnA, btnB), Secs(seconds)
@@ -62,6 +63,7 @@ private:
 
 class SuperDateBox : public SuperFieldBox {
 public:
+    ControlType GetControlType() const override { return ControlType::DateBox; }
     enum DateStyle { DATE_YMD = 0, DATE_MDY };        // shown as 2026-12-31 or 12-31-2026
 
     SuperDateBox(lgfx::LovyanGFX* dst, int x, int y, int width, const lgfx::IFont* font,

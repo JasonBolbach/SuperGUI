@@ -9,6 +9,7 @@
 
 class SuperSlider : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::Slider; }
     bool ShowValue = true;
 
     SuperSlider(lgfx::LovyanGFX* dst, int x, int y, int width, const lgfx::IFont* font,

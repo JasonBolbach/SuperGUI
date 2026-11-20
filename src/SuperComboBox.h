@@ -19,6 +19,7 @@
 
 class SuperComboBox : public SuperTextBox {
 public:
+    ControlType GetControlType() const override { return ControlType::ComboBox; }
     int      MaxRows     = 5;           // popup rows (fewer if the list is shorter)
 
     SuperComboBox(lgfx::LovyanGFX* dst, int x, int y, int width, const lgfx::IFont* font,

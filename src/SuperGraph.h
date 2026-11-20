@@ -10,6 +10,7 @@
 
 class SuperGraph : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::Graph; }
     uint16_t ColLine = 0x07FF;
     uint16_t ColGrid = 0x2104;
     bool ShowGrid  = true;

@@ -26,6 +26,7 @@
 
 class SuperLabel : public SuperControl {
 public:
+    ControlType GetControlType() const override { return ControlType::Label; }
     enum VAlign : uint8_t { VALIGN_TOP = 0, VALIGN_MIDDLE, VALIGN_BOTTOM };
 
     SuperLabel(lgfx::LovyanGFX* dst, int x, int y, int width, const lgfx::IFont* font, const std::string& text = "", Align align = ALIGN_LEFT)
