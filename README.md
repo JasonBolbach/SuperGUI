@@ -17,17 +17,17 @@ Add to `platformio.ini`:
 
 ```ini
 lib_deps =
-    jasonbolbach/SuperGUI@^1.2.0
+    jasonbolbach/SuperGUI@^1.3.0
 ```
 
 or straight from GitHub:
 
 ```ini
 lib_deps =
-    https://github.com/JasonBolbach/SuperGUI.git#v1.2.0
+    https://github.com/JasonBolbach/SuperGUI.git#v1.3.0
 ```
 
-Drop `#v1.2.0` to always track the latest commit on `main`.
+Drop `#v1.3.0` to always track the latest commit on `main`.
 
 ## SuperButton
 

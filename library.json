@@ -1,6 +1,6 @@
 {
   "name": "SuperGUI",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Header-only input helpers for microcontrollers: debounced buttons with click-length and double-click detection, accelerated quadrature encoders, and single-touch gestures. Plus a set of LovyanGFX UI controls (input box, spin box, list, combo, menu, tabs, slider, color picker, ...).",
   "keywords": "button, debounce, click, encoder, rotary, quadrature, touch, gesture, drag, gui, ui, widgets, controls, form, lovyangfx, display, tft, esp32, rp2040, pico",
   "repository": {
