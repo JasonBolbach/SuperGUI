@@ -48,6 +48,7 @@
 <a class="item" href="../controls/progressbar.html">SuperProgressBar</a>
 <a class="item" href="../controls/graph.html">SuperGraph</a>
 <a class="item" href="../controls/gauge.html">SuperGauge</a>
+<a class="item" href="../controls/dial.html">SuperDial</a>
 <a class="item" href="../controls/richtext.html">SuperRichText</a>
 <h4>Custom</h4>
 <a class="item" href="../controls/userdraw.html">SuperUserDraw</a>
@@ -57,7 +58,7 @@
 <table><tr><th>File</th><th>Who owns it</th><th>What is in it</th></tr>
 <tr><td><code>Form1.designer.h</code></td><td>The designer. Regenerated on every export: <b>never edit it</b>.</td><td>Class <code>Form1Base</code>: every control as a public member, the <code>SuperForm</code>, constants, <code>InitializeComponent()</code>, <code>Show()</code>, <code>Service()</code>, and one empty virtual handler per event.</td></tr>
 <tr><td><code>Form1.h</code></td><td>You. Written once, never changed again.</td><td>Class <code>Form1 : Form1Base</code> with a constructor for your start-up code and an <code>override</code> stub per handler.</td></tr></table>
-<p>Every export of an existing <code>Form1.h</code> also keeps a snapshot of it next to it, named <code>Form1.yyyy_mm_dd_hh_mm_ss.h.txt</code> (a <code>.txt</code> so nothing ever includes it). If you ever overwrite your file by accident, the last export's copy has it. The snapshots are never deleted: tidy them up when you like.</p>
+<p>Export never changes an existing <code>Form1.h</code>. Instead the new code is written next to it as <code>Form1.yyyy_mm_dd_hh_mm_ss.h</code>: copy what you need from it into your file. These files are never deleted: tidy them up when you like.</p>
 <h2>Using it in a sketch</h2>
 <pre><code>#include "Form1.h"
 Form1 ui(&amp;lcd, &amp;Enc, &amp;BtnA, &amp;BtnB);   // display, encoder, two buttons
@@ -73,7 +74,8 @@ void loop()  { ui.Service(); }              // focus, editing, touch, handlers</
 <tr><td>Menu</td><td><code>menu1_Choose(uint16_t id)</code> with one <code>case</code> per command, plus <code>menu1_Change()</code></td></tr>
 <tr><td>User draw</td><td><code>scope_Draw(spr, body)</code>, and with Touch input <code>scope_Pointer(e)</code> and <code>scope_Accept()</code></td></tr>
 <tr><td>Rich text</td><td><code>name_Accept()</code> (the user closed the text with ButtonA)</td></tr>
-<tr><td>Gauge, graph, text box, label, progress bar</td><td>none (display only). Update them from your code: <code>load.SetValue(v)</code>, <code>trace.AddSample(v)</code>.</td></tr></table>
+<tr><td>Text box, label, progress bar</td><td>none (display only). Update them from your code.</td></tr>
+<tr><td>Any control</td><td><code>BeforeDraw</code> (off by default; switch it on with the <i>BeforeDraw</i> row) &rarr; <code>gg1_BeforeDraw()</code>: the control calls it every <i>BeforeDraw (ms)</i> milliseconds (0 = on every <code>Service()</code>) and redraws only if you changed something in it. Put the code that reads your sensor or clock there: <code>gg1.SetValue(v)</code>, <code>lbl1.SetText("...")</code>, <code>grf1.AddSample(v)</code>, <code>dl1.SetTime(h, m, s)</code>, <code>dl1.SetHeading(deg)</code>. Not called while the user is editing the control. Nothing is drawn while it runs.</td></tr></table>
 <p>To react to an event, write the <code>override</code> in <code>Form1.h</code>:</p>
 <pre><code>protected:
   void okBtn_Click() override { if (msgYesNo_Ask() == MSG_YESNO_YES) Save(); }
@@ -83,6 +85,7 @@ void loop()  { ui.Service(); }              // focus, editing, touch, handlers</
 <h2>Constants you get</h2>
 <ul><li><code>MNU_...</code> for every menu command, <code>GRP_...</code> for every control group, <code>MSG_...</code> for named message box buttons, and <code>MSG_CANCELLED</code> / <code>MSG_PENDING</code>. Use them instead of numbers.</li></ul>
 <div class="box tip"><b class="h">Tip</b>The constructor takes <b>both</b> buttons: <code>Form1(dst, enc, btnA, btnB)</code>. Older exports took only one; re-export and pass <code>&amp;BtnB</code> too.</div>
+<div class="box tip"><b class="h">Tip</b><b>Touch screen:</b> add a <code>SuperTouch</code> as an optional last argument, <code>Form1(dst, enc, btnA, btnB, &amp;touch)</code> (default <code>nullptr</code> = no touch). The generated code passes it to the form with <code>Form.SetTouch()</code>; you never call that yourself. <code>Form1.h</code> is written only once, so an older file needs the extra argument added by hand (or delete it and export again).</div>
 <div class="box warn"><b class="h">Watch out</b>Do not put your code in <code>Form1.designer.h</code>. The next export replaces the whole file and your changes are gone. Everything of yours goes in <code>Form1.h</code>.</div>
 
 <div class="pn"><span>&larr; <a href="../designer/designer-usage.html">Using the designer</a></span><span><a href="../designer/designer-groups.html">Lists, menus, tab pages and groups</a> &rarr;</span></div>

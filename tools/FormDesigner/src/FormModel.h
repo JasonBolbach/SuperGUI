@@ -30,7 +30,7 @@
 
 namespace FD {
 
-enum CType { C_LABEL, C_PUSHBUTTON, C_CHECKBOX, C_RADIO, C_PROGRESS, C_SPINBOX, C_SLIDER, C_TEXTBOX, C_INPUTBOX, C_TIMEBOX, C_DATEBOX, C_LISTBOX, C_COMBOBOX, C_TABBAR, C_MENU, C_GAUGE, C_GRAPH, C_USERDRAW, C_COLORPICKER, C_RICHTEXT, C_COUNT };
+enum CType { C_LABEL, C_PUSHBUTTON, C_CHECKBOX, C_RADIO, C_PROGRESS, C_SPINBOX, C_SLIDER, C_TEXTBOX, C_INPUTBOX, C_TIMEBOX, C_DATEBOX, C_LISTBOX, C_COMBOBOX, C_TABBAR, C_MENU, C_GAUGE, C_GRAPH, C_USERDRAW, C_COLORPICKER, C_RICHTEXT, C_DIAL, C_COUNT };
 inline bool HasList(int type) { return type == C_LISTBOX || type == C_COMBOBOX || type == C_TABBAR; }      // the control has a list of items (rows / choices / tabs)
 constexpr int MAX_LIST_ITEMS = 200, MAX_ITEM_LEN = 60;
 constexpr int MAX_MENU_NODES = 200, MAX_MENU_DEPTH = 5, MAX_MENU_TEXT = 40, MAX_MENU_ID = 65535;
@@ -38,6 +38,7 @@ constexpr int MAX_MENU_NODES = 200, MAX_MENU_DEPTH = 5, MAX_MENU_TEXT = 40, MAX_
 // A colour band on a gauge dial: from..to in the gauge's own units. Limits: at most 20 bands.
 struct GaugeZone { double from = 0, to = 0; uint16_t color = 0x07E0; };
 constexpr int MAX_GAUGE_ZONES = 20;
+inline bool HasZones(int type) { return type == C_GAUGE || type == C_DIAL; }      // gauge and dial: coloured bands (DControl::zones)
 
 // ---- message boxes: modal popups the form can show (SuperMessageBox). Not on the design surface: a list in the form. Each button may have a name that
 // becomes `static constexpr int <name> = <index>;` in the generated class, so code reads  if (msgDelete_Ask() == MSG_DELETE_YES). ----
@@ -95,6 +96,12 @@ static const ExtraDef LABEL_EXTRAS[] = {
     { "labelColor", "Label color",    PK_COLOR, "0xFFFF", 0, 0, "" },
 };
 static const int N_LABEL_EXTRAS = (int)(sizeof LABEL_EXTRAS / sizeof LABEL_EXTRAS[0]);
+// Every control can ask your code for its values before it is drawn (SuperControl::SetOnBeforeDraw): off by default; "On" generates <name>_BeforeDraw() and connects it.
+static const ExtraDef COMMON_EXTRAS[] = {
+    { "beforeDraw", "BeforeDraw",      PK_BOOL, "false", 0, 1, "No|Yes" },
+    { "pollMs",     "BeforeDraw (ms)", PK_INT,  "0",     0, 60000, "" },                // how often it is called (0 = every pass of Service); only shown when BeforeDraw is on
+};
+static const int N_COMMON_EXTRAS = (int)(sizeof COMMON_EXTRAS / sizeof COMMON_EXTRAS[0]);
 // Integers are the controls' own: a spin box or slider works on integers (a decimal point is only added when drawing, see SetDecimals).
 static const ExtraDef SPIN_EXTRAS[] = {
     { "value",    "Value",       PK_INT,  "0",     -999999999, 999999999, "" },
@@ -180,6 +187,7 @@ static const ExtraDef GAUGE_EXTRAS[] = {
     { "unit",        "Unit",                PK_TEXT,  "",       0, 0, "" },
     { "showValue",   "Show value",          PK_BOOL,  "true",   0, 1, "No|Yes" },
     { "needle",      "Needle",              PK_ENUM,  "0",      0, 1, "Taper|Line" },
+    { "valueInHub",  "Value in hub",        PK_BOOL,  "true",   0, 1, "No|Yes" },
     { "needleByZone","Zone needle",      PK_BOOL,  "true",   0, 1, "No|Yes" },
     { "smoothing",   "Smoothing",           PK_BOOL,  "true",   0, 1, "No|Yes" },
     { "smoothMs",    "Smooth (ms)",      PK_INT,   "250",    1, 5000, "" },
@@ -189,6 +197,53 @@ static const ExtraDef GAUGE_EXTRAS[] = {
     { "minMaxMs",    "MinMax (ms)", PK_INT,   "0",      0, 600000, "" },           // 0 = off: lines for the lowest / highest value of the last window
     { "minMaxDeg",   "MinMax deg", PK_FLOAT, "3",     0, 90, "" },
     { "minMaxThick", "MinMax thick",   PK_INT,   "2",      1, 8, "" },
+};
+// SuperDial: a round face with up to 3 pointers. "kind" is a DESIGNER preset: choosing one fills in the other rows (it is not generated). A wrapping scale runs 0..Maximum round the
+// whole circle (compass, clock) and "sweepStart" is where 0 sits; a sweep scale maps Minimum..Maximum onto sweepStart..sweepEnd. Pointer rows only show for the pointers that exist.
+static const ExtraDef DIAL_EXTRAS[] = {
+    { "bodyHeight",  "Body height",   PK_INT,   "140",    16, 400, "" },
+    { "kind",        "Preset",        PK_ENUM,  "0",      0, 3, "Gauge|Compass|Clock|Tachometer" },
+    { "wrap",        "Scale",         PK_ENUM,  "0",      0, 1, "Sweep|Wrap" },
+    { "min",         "Minimum",       PK_FLOAT, "0",      -999999, 999999, "" },
+    { "max",         "Maximum",       PK_FLOAT, "100",    -999999, 999999, "" },
+    { "sweepStart",  "Start angle",   PK_INT,   "-135",   -360, 360, "" },
+    { "sweepEnd",    "End angle",     PK_INT,   "135",    -360, 360, "" },
+    { "majorTicks",  "Major ticks",   PK_INT,   "10",     1, 120, "" },
+    { "minorTicks",  "Minor ticks",   PK_INT,   "1",      0, 11, "" },
+    { "tickLabels",  "Tick labels",   PK_BOOL,  "true",   0, 1, "No|Yes" },
+    { "labels",      "Labels (a,b,c)", PK_TEXT, "",       0, 0, "" },                // replaces the numbers at the major ticks; empty = numbers
+    { "decimals",    "Decimals",      PK_INT,   "0",      0, 4, "" },
+    { "unit",        "Unit",          PK_TEXT,  "",       0, 0, "" },
+    { "showValue",   "Show value",    PK_BOOL,  "true",   0, 1, "No|Yes" },
+    { "valueInHub",  "Value in hub",  PK_BOOL,  "true",   0, 1, "No|Yes" },
+    { "valuePointer","Value pointer", PK_INT,   "0",      0, 2, "" },
+    { "faceRotation","Face rotation", PK_FLOAT, "0",      -360, 360, "" },
+    { "smoothing",   "Smoothing",     PK_BOOL,  "true",   0, 1, "No|Yes" },
+    { "smoothMs",    "Smooth (ms)",   PK_INT,   "250",    1, 5000, "" },
+    { "faceColor",   "Face color",    PK_COLOR, "0x0000", 0, 0, "" },
+    { "rimColor",    "Rim color",     PK_COLOR, "0x7BEF", 0, 0, "" },
+    { "tickColor",   "Tick color",    PK_COLOR, "0x7BEF", 0, 0, "" },
+    { "hubColor",    "Hub color",     PK_COLOR, "0xFFFF", 0, 0, "" },
+    { "zoneThick",   "Zone ring (px)", PK_INT,  "0",      0, 40, "" },               // 0 = a tenth of the radius
+    { "pointers",    "Pointers",      PK_ENUM,  "1",      0, 3, "0|1|2|3" },
+    { "p1Value",  "P1 value",   PK_FLOAT, "0",      -999999, 999999, "" },
+    { "p1Length", "P1 length",  PK_FLOAT, "0.9",    0, 1, "" },
+    { "p1Width",  "P1 width",   PK_INT,   "4",      1, 20, "" },
+    { "p1Color",  "P1 color",   PK_COLOR, "0xFFFF", 0, 0, "" },
+    { "p1Style",  "P1 style",   PK_ENUM,  "0",      0, 2, "Taper|Line|Tail" },
+    { "p1Face",   "P1 on card", PK_BOOL,  "false",  0, 1, "No|Yes" },                // turns with the face (a bearing on the card)
+    { "p2Value",  "P2 value",   PK_FLOAT, "0",      -999999, 999999, "" },
+    { "p2Length", "P2 length",  PK_FLOAT, "0.7",    0, 1, "" },
+    { "p2Width",  "P2 width",   PK_INT,   "3",      1, 20, "" },
+    { "p2Color",  "P2 color",   PK_COLOR, "0xFFFF", 0, 0, "" },
+    { "p2Style",  "P2 style",   PK_ENUM,  "0",      0, 2, "Taper|Line|Tail" },
+    { "p2Face",   "P2 on card", PK_BOOL,  "false",  0, 1, "No|Yes" },
+    { "p3Value",  "P3 value",   PK_FLOAT, "0",      -999999, 999999, "" },
+    { "p3Length", "P3 length",  PK_FLOAT, "0.5",    0, 1, "" },
+    { "p3Width",  "P3 width",   PK_INT,   "3",      1, 20, "" },
+    { "p3Color",  "P3 color",   PK_COLOR, "0xFFFF", 0, 0, "" },
+    { "p3Style",  "P3 style",   PK_ENUM,  "0",      0, 2, "Taper|Line|Tail" },
+    { "p3Face",   "P3 on card", PK_BOOL,  "false",  0, 1, "No|Yes" },
 };
 static const ExtraDef GRAPH_EXTRAS[] = {
     { "bodyHeight", "Body height",   PK_INT,   "80",     8, 400, "" },
@@ -283,12 +338,16 @@ inline const TypeInfo& Info(int t) {
         { "SuperUserDraw",    "User Draw",   "ud",     160, "",       false, false, true,  false, USERDRAW_EXTRAS, FD_N(USERDRAW_EXTRAS), false, false },
         { "SuperColorPicker", "Color Picker","cp",   200, "",       false, false, true,  true,  COLORPICKER_EXTRAS, FD_N(COLORPICKER_EXTRAS), false, false },
         { "SuperRichText",    "Rich Text",   "rtb",     240, "",       false, true,  true,  true,  RICHTEXT_EXTRAS, FD_N(RICHTEXT_EXTRAS), false, false },
+        { "SuperDial",        "Dial",        "dl",    160, "",       false, false, true,  false, DIAL_EXTRAS,   FD_N(DIAL_EXTRAS),   false, false },
     };
     return T[t < 0 || t >= C_COUNT ? 0 : t];
 }
 // All extras of a type: its own, then the label group (when the type can have a label). Index = position in this list.
-inline int ExtraCount(int type) { const TypeInfo& i = Info(type); return i.nExtras + (i.hasLabel ? N_LABEL_EXTRAS : 0); }
-inline const ExtraDef& ExtraAt(int type, int idx) { const TypeInfo& i = Info(type); return idx < i.nExtras ? i.extras[idx] : LABEL_EXTRAS[idx - i.nExtras]; }
+inline int ExtraCount(int type) { const TypeInfo& i = Info(type); return i.nExtras + (i.hasLabel ? N_LABEL_EXTRAS : 0) + N_COMMON_EXTRAS; }
+inline const ExtraDef& ExtraAt(int type, int idx) {
+    const TypeInfo& i = Info(type); int own = i.nExtras, lab = i.hasLabel ? N_LABEL_EXTRAS : 0;
+    return idx < own ? i.extras[idx] : idx < own + lab ? LABEL_EXTRAS[idx - own] : COMMON_EXTRAS[idx - own - lab];
+}
 inline const ExtraDef* FindExtra(int type, const char* key) {
     for (int i = 0; i < ExtraCount(type); ++i) if (std::string(ExtraAt(type, i).key) == key) return &ExtraAt(type, i);
     return nullptr;
@@ -341,11 +400,29 @@ inline bool ExtraSet(DControl& c, const ExtraDef& d, const std::string& v) {    
 inline long XInt(const DControl& c, const char* key);
 inline void ClampSelected(DControl& c);
 inline long XInt(const DControl& c, const char* key) { const ExtraDef* d = FindExtra(c.type, key); return d ? strtol(ExtraGet(c, *d).c_str(), nullptr, 0) : 0; }
+inline bool XBool(const DControl& c, const char* key);
+// Rows that are only shown when they matter: the BeforeDraw interval (BeforeDraw on), and a dial's pointer rows (P1.., P2.., P3..) for the pointers it has.
+inline bool ExtraShown(const DControl& c, int idx) {
+    if (idx >= ExtraCount(c.type)) return true;
+    const char* k = ExtraAt(c.type, idx).key;
+    if (std::string(k) == "pollMs") return XBool(c, "beforeDraw");                    // the interval only matters when BeforeDraw is on
+    if (c.type != C_DIAL || idx >= Info(c.type).nExtras) return true;
+    if (k[0] == 'p' && k[1] >= '1' && k[1] <= '3' && k[2] >= 'A' && k[2] <= 'Z') return k[1] - '0' <= XInt(c, "pointers");
+    return true;
+}
 inline double XFloat(const DControl& c, const char* key);
 inline bool XBool(const DControl& c, const char* key) { const ExtraDef* d = FindExtra(c.type, key); return d && ExtraGet(c, *d) == "true"; }
 inline double XFloat(const DControl& c, const char* key) { const ExtraDef* d = FindExtra(c.type, key); return d ? strtod(ExtraGet(c, *d).c_str(), nullptr) : 0.0; }
 inline std::string XStr(const DControl& c, const char* key) { const ExtraDef* d = FindExtra(c.type, key); return d ? ExtraGet(c, *d) : ""; }
-inline bool XSet(const DControl& c, const char* key) { return c.extra.count(key) > 0; }     // explicitly set (differs from the default)
+// The dial's custom tick labels: the "Labels" text split at the commas ("N,NE,E": an empty entry leaves a tick bare). No text = the numbers.
+inline std::vector<std::string> DialLabels(const DControl& c) {
+    std::vector<std::string> v; std::string t = XStr(c, "labels"); if (t.empty()) return v;
+    std::string cur; for (char ch : t) { if (ch == ',') { v.push_back(cur); cur.clear(); } else cur += ch; } v.push_back(cur);
+    return v;
+}
+inline bool XSet(const DControl& c, const char* key) { return c.extra.count(key) > 0; }
+// A zone is valid when it ends above where it starts; on a dial with a wrapping scale (compass, clock) it may also cross the top (from > to: 300 to 40), it only has to have a size.
+inline bool ZoneOk(const DControl& c, const GaugeZone& z) { return c.type == C_DIAL && XInt(c, "wrap") == 1 ? z.from != z.to : z.from < z.to; }     // explicitly set (differs from the default)
 // The initial selection of a list must be one of its items (an empty list has none): pulled back to the last item.
 inline void ClampSelected(DControl& c) {
     const ExtraDef* d = FindExtra(c.type, "selected"); if (!d) return;
@@ -713,7 +790,7 @@ struct DForm {
             for (size_t i = 0; i < c.list.size(); ++i) { std::string v; for (char ch : c.list[i]) { if (ch == '"' || ch == '\\') v += '\\'; v += ch; } s += (i ? ", " : "") + std::string("\"") + v + "\""; }
             s += "]";
         }
-        if (c.type == C_GAUGE && !c.zones.empty()) {                       // "zones": [ { "from": 0, "to": 60, "color": "0x07E0" }, ... ]
+        if (HasZones(c.type) && !c.zones.empty()) {                       // "zones": [ { "from": 0, "to": 60, "color": "0x07E0" }, ... ]
             s += ", \"zones\": [";
             for (size_t i = 0; i < c.zones.size(); ++i) s += (i ? ", " : "") + std::string("{ \"from\": ") + FloatText(c.zones[i].from) + ", \"to\": " + FloatText(c.zones[i].to) + ", \"color\": \"" + Hex(c.zones[i].color) + "\" }";
             s += "]";
@@ -870,10 +947,10 @@ struct DForm {
                 int chars = 0;
                 for (std::string& l : raw) { std::string v; for (char ch : l) if (ch >= 0x20 && ch < 0x7F) v += ch; if ((int)d.list.size() >= MAX_RICH_LINES || chars + (int)v.size() > MAX_RICH_CHARS) break; chars += (int)v.size() + 1; d.list.push_back(v); }
             }
-            if (t == C_GAUGE) if (const JV* zv = c.Get("zones")) if (zv->t == JV::ARR)
+            if (HasZones(t)) if (const JV* zv = c.Get("zones")) if (zv->t == JV::ARR)
                 for (const JV& z : zv->a) if (z.t == JV::OBJ && (int)d.zones.size() < MAX_GAUGE_ZONES) {                          // a band needs from < to; the colour is 0xRRRR or a number
                     const JV* fv = z.Get("from"); const JV* tv = z.Get("to"); const JV* cv = z.Get("color");
-                    if (!fv || !tv || fv->t != JV::NUM || tv->t != JV::NUM || !(fv->d < tv->d)) continue;
+                    if (!fv || !tv || fv->t != JV::NUM || tv->t != JV::NUM || !(fv->d < tv->d || (t == C_DIAL && fv->d != tv->d))) continue;      // (a dial's wrapping scale may have from > to: checked when the scale is known)
                     GaugeZone gz; gz.from = fv->d; gz.to = tv->d;
                     if (cv && cv->t == JV::STR) gz.color = (uint16_t)std::min(65535L, std::max(0L, strtol(cv->s.c_str(), nullptr, 0))); else if (cv && cv->t == JV::NUM) gz.color = (uint16_t)std::min(65535L, std::max(0L, cv->n));
                     d.zones.push_back(gz);

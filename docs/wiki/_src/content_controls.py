@@ -3,7 +3,7 @@ CONTROL_GROUPS = [
  ('Choosing', ['listbox','combobox','menu','tabbar','colorpicker']),
  ('Buttons', ['checkbox','radiobutton','pushbutton']),
  ('Dialogs', ['messagebox']),
- ('Display only', ['progressbar','graph','gauge','richtext']),
+ ('Display only', ['progressbar','graph','gauge','dial','richtext']),
  ('Custom', ['userdraw']),
 ]
 CONTROLS = []
@@ -269,8 +269,8 @@ form.Add(&g, false);
 g.AddSample(sensor());''',
  features=['One sample per pixel of inner width by default (<code>SetCapacity(n)</code> changes that; the line is scaled).','Automatic vertical range (min..max of what is shown plus a margin) unless <code>SetRange(lo,hi)</code>.','<code>ShowRange</code> prints top / bottom values; <code>ShowGrid</code> draws three faint lines.','Memory: capacity x 4 bytes plus the sprite.'],
  gui='<p>Nothing to operate.</p>',
- events='<p>None. <code>AddSample(v, redraw=true)</code> appends and redraws; pass <code>false</code> to batch.</p>',
- api=[('AddSample(v, redraw)','Append'),('SetRange / SetAutoRange','Vertical scale'),('SetCapacity(n)','Samples kept'),('Clear()','Remove all')],
+ events='<p>None by default. <code>AddSample(v, redraw=true)</code> appends and redraws; pass <code>false</code> to batch. Optional <b>BeforeDraw</b> (pull model): <code>SetOnBeforeDraw(fn, user)</code> and <code>SetPollMs(ms)</code> call your function from <code>Tick()</code> every <code>ms</code> milliseconds (0 = every service pass, first call at once); call <code>AddSample()</code> in it. Nothing is drawn while it runs and the control redraws only if something changed (<code>src/SuperBeforeDraw.h</code>, shared with <a href="dial.html">SuperDial</a>).</p>',
+ api=[('AddSample(v, redraw)','Append'),('SetRange / SetAutoRange','Vertical scale'),('SetCapacity(n)','Samples kept'),('Clear()','Remove all'),('SetOnBeforeDraw(fn,user) / SetPollMs(ms)','Callback that adds the samples')],
  tips=['Use a fixed range for stable visuals; auto range rescales as extremes scroll out.'],
  see=['<a href="gauge.html">SuperGauge</a>'])
 
@@ -286,15 +286,44 @@ g.SetValue(42);''',
  features=['Sweep in degrees clockwise from 12 o\'clock: default -90..+90 (half dial); -135..+135 gives a 270 degree dial. A sweep that fits the upper half uses the half-dial layout.',
   'Zones paint coloured bands; with <code>NeedleByZone</code> (default) the needle and hub take the colour of the zone the value is in.',
   'Ticks: <code>SetTicks(major, minor)</code>; major ticks carry numbers when there is room (<code>ShowTickLabels</code>). <code>NEEDLE_TAPER</code> (default) or <code>NEEDLE_LINE</code>.',
+  'The value is shown in a box over the hub, sized for the widest of Min / Max (<code>ValueInHub</code>, default true); set it false for plain text under the dial. A box wider than two thirds of the control falls back to the text under the dial.',
   'Smoothing is on by default: <code>SetValue</code> starts a glide of about <code>SmoothMs</code>; only redraws while moving.',
   '<b>MinMax</b>: <code>SetMinMax(windowMs, minDegrees, thickness)</code> draws the lowest and highest value of the last <code>windowMs</code> as lines, only when they differ from the needle by at least <code>minDegrees</code>. Each line is centred on its value, <code>thickness</code> px thick, in the <em>inverted</em> colour of the dial segment under it. Old extremes age out by themselves.',
   'Built from LovyanGFX primitives; no bitmaps.'],
  gui='<p>Display only: nothing to operate. The user sees the needle glide to a new value and, in MinMax mode, the two extreme markers appear when the reading has moved away from them and disappear when the window forgets them.</p>',
- events='<p>None. Feed it with <code>SetValue()</code>. Animation is driven by <code>SuperControl::Tick()</code> from <code>SuperForm::Service()</code>; without a form call <code>Update()</code> from <code>loop()</code>.</p>',
- api=[('SetRange(min,max)','Value range'),('AddZone(from,to,colour)','Coloured band'),('SetSweep(startDeg,endDeg)','Dial angles'),('SetTicks(major,minor)','Tick marks'),('SetFormat(decimals, unit)','Value text'),('SetSmoothing(bool)','Glide on / off'),('SetMinMax(ms, deg, thick)','Window lines; windowMs 0 turns them off'),('SetValue(v)','Needle target')],
+ events='<p>None by default. Feed it with <code>SetValue()</code>. Optional <b>BeforeDraw</b> (pull model): <code>SetOnBeforeDraw(fn, user)</code> and <code>SetPollMs(ms)</code> call your function from <code>Tick()</code> every <code>ms</code> milliseconds (0 = every service pass, first call at once); call <code>SetValue()</code> in it. Nothing is drawn while it runs and the control redraws only if something changed (<code>src/SuperBeforeDraw.h</code>, shared with <a href="dial.html">SuperDial</a>). Animation is driven by <code>SuperControl::Tick()</code> from <code>SuperForm::Service()</code>; without a form call <code>Update()</code> from <code>loop()</code>.</p>',
+ api=[('SetRange(min,max)','Value range'),('AddZone(from,to,colour)','Coloured band'),('SetSweep(startDeg,endDeg)','Dial angles'),('SetTicks(major,minor)','Tick marks'),('SetFormat(decimals, unit)','Value text'),('SetOnBeforeDraw(fn,user) / SetPollMs(ms)','Callback that sets the value'),('SetSmoothing(bool)','Glide on / off'),('SetMinMax(ms, deg, thick)','Window lines; windowMs 0 turns them off'),('SetValue(v)','Needle target')],
  tips=['Feed it at a modest rate (the demo uses every 500 ms); the glide fills the gaps.','Pick the window long enough to show a trend (seconds), and <code>minDegrees</code> a few degrees so a steady value shows no lines.'],
  pitfalls=['A sweep wider than a half dial makes the control centre a full circle and needs a taller body.','Without a <a href="../concepts/form.html">form</a> the glide and MinMax expiry only run if you call <code>Update()</code>.'],
  see=['<a href="progressbar.html">SuperProgressBar</a>','<a href="graph.html">SuperGraph</a>','<a href="userdraw.html">SuperUserDraw</a>'])
+
+add(slug='dial', cls='SuperDial', header='SuperDial.h', kind='display', short='Round face with any number of pointers: clock, compass, tachometer',
+ tag='A display-only round face with any number of pointers, a scale that sweeps or wraps, custom tick labels, a zone ring and a face that can turn. A clock, a compass with a turning card and a circular gauge are the same control with different settings.',
+ code='''SuperDial clockFace(&lcd, 5, 5, 150, 150, &lgfx::fonts::Font2);
+clockFace.MakeClock();                       // 12 hour face, three pointers (hours, minutes, seconds)
+SuperDial compass(&lcd, 165, 5, 150, 150, &lgfx::fonts::Font2);
+compass.MakeCompass();                   // N E S W card, a red pointer at the top
+SuperDial tacho(&lcd, 5, 175, 200, 140, &lgfx::fonts::Font2);
+tacho.SetSweep(0, 8, -135, 135);         // 0..8 over 270 degrees
+tacho.AddZone(6, 8, TFT_RED);
+tacho.AddPointer();
+form.Add(&clockFace, false); form.Add(&compass, false); form.Add(&tacho, false);
+clockFace.SetTime(10, 8, 30);                // from your own clock
+compass.SetHeading(40);                  // the card turns, the pointer stays at the top
+tacho.SetPointerValue(0, 5.5f);''',
+ features=['<b>Scale.</b> <code>SetSweep(min, max, startDeg, endDeg)</code> maps a value range onto an arc (values are clamped). <code>SetWrap(range)</code> maps 0..range onto the whole circle and the values wrap: 359 to 1 goes through 0, not back through 180.',
+  '<b>Pointers.</b> <code>AddPointer(length, width, colour, style, onCard)</code> returns the index; <code>SetPointerValue(i, v)</code> moves it. Styles: <code>POINTER_TAPER</code>, <code>POINTER_LINE</code>, <code>POINTER_TAIL</code> (with a short tail behind the hub). Later pointers are drawn on top.',
+  '<b>Face.</b> Rim, zone ring (<code>AddZone</code>, <code>ZoneThickness</code>), ticks and labels. <code>SetFaceRotation(deg)</code> turns the ticks, zones and labels; the labels move but stay upright. A pointer added with <code>onCard = true</code> turns with the face (a bearing on a compass card).',
+  '<b>Labels.</b> <code>SetTickLabels({"N","NE",...})</code> replaces the numbers at the major ticks (an empty string leaves a tick bare). A wrap scale shows the range\'s end at the top (12, not 0).',
+  '<b>Hub.</b> <code>ShowValue</code> writes the value of pointer <code>ValuePointer</code> (default 0) in a box over the hub (<code>ValueInHub</code>), with <code>SetFormat(decimals, unit)</code> or <code>SetHubText()</code>.',
+  '<b>Presets.</b> <code>MakeClock()</code> + <code>SetTime(h, m, s)</code> and <code>MakeCompass()</code> + <code>SetHeading(deg)</code> set up those two faces.',
+  'Smoothing is on by default: pointers and the face glide (the short way round on a wrap scale). All the maths is single precision; the face\'s sines and cosines are worked out once per tick set and rotated per frame.'],
+ gui='<p>Display only: nothing to operate. The user sees the pointers glide to new values and the card turn.</p>',
+ events='<p><b>BeforeDraw</b> (a pull event): <code>SetOnBeforeDraw(fn, user)</code> and <code>SetPollMs(ms)</code>. Your function is called from <code>Tick()</code> every <code>ms</code> milliseconds (0 = on every service pass; the first call is at once). Put the code that reads the clock or sensor in it and call <code>SetPointerValue()</code>, <code>SetTime()</code>, <code>SetHeading()</code>, <code>SetFaceRotation()</code>, <code>SetHubText()</code> or set <code>ValuePointer</code>. Nothing is drawn while it runs and the dial redraws only if something changed, so setting the same values again is free. You can also feed the dial from <code>loop()</code> instead. Animation is driven by <code>SuperControl::Tick()</code> from <code>SuperForm::Service()</code>; without a form call <code>Update()</code> from <code>loop()</code>.</p>',
+ api=[('SetSweep(min,max,startDeg,endDeg)','Arc scale'),('SetWrap(range, startDeg)','Whole-circle scale that wraps'),('SetTicks(major,minor)','Tick marks'),('SetTickLabels(list)','Custom labels'),('AddPointer(...)','Add a pointer, returns its index'),('SetPointerValue(i,v)','Move a pointer'),('SetFaceRotation(deg)','Turn the face'),('AddZone(from,to,colour)','Coloured band on the zone ring'),('SetFormat(decimals, unit)','Hub value text'),('MakeClock() / SetTime(h,m,s)','12 hour clock'),('MakeCompass() / SetHeading(deg)','Compass card'),('SetOnBeforeDraw(fn,user) / SetPollMs(ms)','Callback that sets the values'),('SetSmoothing(bool)','Glide on / off')],
+ tips=['Compass: keep the pointer at the top and turn the card with <code>SetHeading()</code>; that is how a real compass card reads.','Clock: turn smoothing off for a ticking second hand, leave it on for a sweeping one.'],
+ pitfalls=['A zone that crosses the top of a wrapping scale has <code>from</code> greater than <code>to</code> (300 to 40); only a wrapping scale allows it.','A rotated face costs a redraw of every tick and label: on a slow display keep the dial small or feed it at a modest rate.'],
+ see=['<a href="gauge.html">SuperGauge</a>','<a href="graph.html">SuperGraph</a>'])
 
 add(slug='userdraw', cls='SuperUserDraw', header='SuperUserDraw.h', kind='user', short='A control YOUR code draws',
  tag='The usual frame, label, focus and dimming; everything inside is yours.',

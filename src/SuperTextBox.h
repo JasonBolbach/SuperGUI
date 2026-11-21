@@ -24,6 +24,7 @@ public:
         : SuperControl(dst, x, y, width, font) {}
 
     void SetText(const std::string& t, bool keepScroll = false) {
+        if (t == Text) { if (!keepScroll && First != 0) { First = 0; Dirty = true; } return; }       // unchanged: nothing to redraw (a BeforeDraw function may set the same text every time)
         Text = t; LayoutDirty = Dirty = true;
         if (!keepScroll) First = 0;
     }

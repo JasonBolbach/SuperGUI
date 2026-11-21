@@ -47,3 +47,5 @@ line) live. Labels are small and left-aligned throughout: `DemoUI::LabelFont` (d
 is applied to every control in `Begin()`.
 
 The **Draw** page shows `SuperGauge` (a dial with colour zones, a smooth needle and MinMax lines for the last 6 s, fed a new value twice a second) and `SuperUserDraw`: a sketch pad (persistent canvas + touch events; touch to draw, hold to clear).
+
+The **Dials** page shows three `SuperDial` faces: a clock (`MakeClock()` / `SetTime()`), a compass whose card turns (`MakeCompass()` / `SetHeading()`) and a tachometer with colour zones.

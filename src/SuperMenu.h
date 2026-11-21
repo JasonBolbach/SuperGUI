@@ -41,7 +41,7 @@ public:
               SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB)
         : SuperControl(dst, x, y, width, font), Rows(rows < 1 ? 1 : rows), IO(enc, btnA, btnB) { BackItem.Text = "< Back"; }
 
-    void SetAbort(bool (*fn)()) { IO.Abort = fn; }
+    void SetAbort(bool (*fn)()) override { IO.Abort = fn; }
     void SetOnChange(void (*fn)(void*), void* user = nullptr) { IO.OnChange = fn; IO.OnChangeUser = user; }
     void SetOnAccept(void (*fn)(void*), void* user = nullptr) { IO.OnAccept = fn; IO.OnAcceptUser = user; }
 

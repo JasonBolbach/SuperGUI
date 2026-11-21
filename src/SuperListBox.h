@@ -28,7 +28,7 @@ public:
                  SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB)
         : SuperControl(dst, x, y, width, font), Rows(rows < 1 ? 1 : rows), IO(enc, btnA, btnB) {}
 
-    void SetAbort(bool (*fn)()) { IO.Abort = fn; }
+    void SetAbort(bool (*fn)()) override { IO.Abort = fn; }
     // OnChange: the cursor moved (live). OnAccept: an item was accepted (GetSelected() is new).
     void SetOnChange(void (*fn)(void*), void* user = nullptr) { IO.OnChange = fn; IO.OnChangeUser = user; }
     void SetOnAccept(void (*fn)(void*), void* user = nullptr) { IO.OnAccept = fn; IO.OnAcceptUser = user; }
@@ -67,8 +67,10 @@ public:
     const std::string& GetItem(int i) const { static const std::string none; return (i >= 0 && i < Count()) ? Items[i] : none; }
 
     void SetSelected(int i) {
+        int sel0 = Sel, cur0 = Cursor, first0 = First;
         Sel = Items.empty() ? -1 : std::clamp(i, 0, (int)Items.size() - 1);
-        FixSel(); Cursor = Sel; Keep(Sel); Dirty = true;
+        FixSel(); Cursor = Sel; Keep(Sel);
+        if (Sel != sel0 || Cursor != cur0 || First != first0) Dirty = true;                  // unchanged: nothing to redraw
     }
     int  GetSelected() const { return Sel; }
     const std::string& GetSelectedText() const { return GetItem(Sel); }
@@ -130,7 +132,7 @@ public:
         return SuperPointerDefault(IO, *this, e, RowH());
     }
 
-    bool StartEdit() {                                             // non-blocking: then call Service()
+    bool StartEdit() override {                                             // non-blocking: then call Service()
         if (Items.empty()) return false;
         FixSel(); if (Sel < 0) return false;                       // nothing but separators / headings: nothing to choose
         Cursor = Sel;
@@ -143,7 +145,7 @@ public:
     }
 
     // Returns EDIT_ACTIVE while editing, then EDIT_ACCEPTED or EDIT_CANCELLED once, then EDIT_IDLE.
-    SuperEditState Service() {
+    SuperEditState Service() override {
         if (State != EDIT_ACTIVE) return EDIT_IDLE;
         if (IO.Aborted()) return Finish(EDIT_CANCELLED);
         bool redraw = false;

@@ -21,9 +21,10 @@ Each control renders into its **own `LGFX_Sprite`** and pushes itself to a desti
 | `SuperColorPicker` | HSV picker with a swatch; get RGB565 / RGB888 |
 | `SuperMessageBox` | modal message + 1-3 buttons, restores what it covered |
 | `SuperProgressBar` | display-only progress bar with optional percent text |
-| `SuperGraph` | display-only scrolling line graph |
+| `SuperGraph` | display-only scrolling line graph; `SetOnBeforeDraw(fn)` + `SetPollMs(ms)` let it ask for its own samples (see `src/SuperBeforeDraw.h`, also on `SuperGauge` and `SuperDial`) |
 | `SuperLabel` | plain text, no frame or title: left / centre / right alignment, vertical alignment, word wrap, max lines, "..." cut, underline, `SetTextf()` for live values |
 | `SuperGauge` | display-only dial: range, colour zones (the needle takes the zone's colour), tick marks and numbers, value as text, any sweep (half dial by default), smooth needle glide |
+| `SuperDial` | display-only round face with any number of pointers: clock, compass with a turning card, circular gauge, tachometer; sweep or wrapping scale, custom tick labels, zone ring, value in the hub |
 | `SuperUserDraw` | a control YOUR code draws: a draw event gets a sprite and the body rectangle; optional persistent canvas, auto-redraw timer and touch (pointer) events |
 | `SuperForm` | not a control: focus handling for a set of controls (wheel moves the highlight, A edits) |
 
@@ -34,6 +35,13 @@ font / color / alignment, public colour variables, `SetDisplayPos`, `DrawPreview
 `SetEnabled(bool)` (drawn dimmed, can't be edited, skipped by `SuperForm`), `SetVisible(bool)` (erased with
 `ColHighlightClear`, not drawn), and `ApplyTheme(SuperTheme::Dark() / Light() / your own)`, which sets all colours,
 border size / style and padding in one call.
+
+**BeforeDraw (every control).** `SetOnBeforeDraw(fn, user)` and `SetPollMs(ms)` (`SuperControl.h`, `SuperBeforeDraw.h`): instead of pushing values
+from `loop()`, let the control ask for them. `fn(void* user)` is called from `SuperForm::Service()` (or `Update()` without a form) every `ms`
+milliseconds (0 = every pass; the first call is at once). Set the control's values in it: `SetText`, `SetValue`, `SetChecked`, `SetPointerValue`,
+`AddSample`, ... Nothing is drawn while it runs; the control redraws once afterwards, and only if something changed, so setting the same value every
+time is free. A control that is hidden, or being edited, is not asked. The Form Designer has a **BeforeDraw** row on every control that generates
+`<name>_BeforeDraw()` and connects it.
 
 ### Sleek style
 `SetBorderStyle(SuperControl::BORDER_SLEEK)` (or `SuperTheme::BorderStyle = 2`): a plain one-colour frame (`SetBorder(size, colour)`) with the
@@ -271,6 +279,36 @@ SuperControl* c = form.ControlAt(x, y);
 if (c && c->GetControlType() == SuperControl::ControlType::TextBox) static_cast<SuperTextBox*>(c)->SetText("hello");
 ```
 
+## SuperDial
+A display-only round face (`form.Add(&dial, false)`): a clock, a compass, a circular gauge or a tachometer are the same control with different settings. Full description at the top of `src/SuperDial.h`; `examples/DialExample` and the Dials page of the demos show it. The drawing helpers it shares with the gauge are in `src/SuperDialDraw.h`.
+
+```cpp
+SuperDial clockFace(&lcd, 5, 5, 150, /*body height*/ 150, &lgfx::fonts::Font2);
+clockFace.MakeClock();  clockFace.SetTime(10, 8, 30);           // 12 hour face, hours / minutes / seconds pointers
+
+SuperDial compass(&lcd, 165, 5, 150, 150, &lgfx::fonts::Font2);
+compass.MakeCompass();  compass.SetHeading(40);         // the card turns, the red pointer stays at the top
+
+SuperDial tacho(&lcd, 5, 175, 200, 140, &lgfx::fonts::Font2);
+tacho.SetSweep(0, 8, -135, 135);  tacho.SetTicks(8, 4);  // 0..8 over 270 degrees
+tacho.AddZone(0, 6, TFT_GREEN);  tacho.AddZone(6, 8, TFT_RED);
+tacho.AddPointer(0.9f, 6);  tacho.SetPointerValue(0, 5.5f);
+```
+| Call / setting | Meaning |
+|---|---|
+| `SetSweep(min, max, startDeg, endDeg)` | maps a value range onto an arc (degrees clockwise from 12 o'clock; values clamped) |
+| `SetWrap(range, startDeg)` | maps 0..range onto the whole circle; values wrap, a glide takes the short way round (359 to 1 goes through 0) |
+| `AddPointer(length, width, colour, style, onCard)` | returns the pointer's index; `length` is a fraction of the room inside the ticks; styles `POINTER_TAPER`, `POINTER_LINE`, `POINTER_TAIL`; `onCard = true` turns the pointer with the face |
+| `SetPointerValue(i, v)`, `GetPointerValue(i)`, `GetShownValue(i)`, `SetPointerStyle(...)`, `SetPointerVisible(i, on)` | move and style a pointer |
+| `SetFaceRotation(deg)` | turns the ticks, zones and labels (the labels stay upright) |
+| `SetTicks(major, minor)`, `SetTickLabels({"N","NE",...})` | tick marks; custom labels replace the numbers (an empty string leaves a tick bare); a wrap scale shows the range's end at the top (12, not 0) |
+| `AddZone(from, to, colour)`, `ZoneThickness` | coloured ring inside the rim; on a wrap scale a zone with `from > to` crosses the top (the Form Designer allows it too) |
+| `ShowValue`, `ValueInHub`, `ValuePointer`, `SetFormat(decimals, unit)`, `SetHubText(text)` | the value of pointer `ValuePointer` (default 0) in a box over the hub (or a strip under the dial); `SetHubText` shows your own text |
+| `MakeClock()`, `SetTime(h, m, s)`, `MakeCompass()`, `SetHeading(deg)` | the two presets and their helpers |
+| `SetOnBeforeDraw(fn, user)`, `SetPollMs(ms)` | BeforeDraw: your function is called from `Tick()` / `Update()` every `ms` milliseconds (0 = every service pass; the first call is at once); set the values in it (`SetPointerValue`, `SetTime`, `SetHeading`, `SetFaceRotation`, `SetHubText`, `ValuePointer = n`). Nothing is drawn while it runs, and the dial redraws only if it changed something. |
+| `SetSmoothing(on, ms)` | on by default (about 250 ms): pointers and the face glide, driven by `SuperControl::Tick()` from `SuperForm::Service()`; without a form call `Update()` from `loop()` |
+| `ColFace`, `ColRim`, `ColTick`, `ColHub`, `ShowFace`, `ShowRim`, `TickFont` | colours and what is drawn |
+
 ## SuperGauge
 A display-only dial (`form.Add(&gauge, false)`), like the progress bar. Full description at the top of `src/SuperGauge.h`; `examples/GaugeExample` and the Draw page of the demos show it.
 
@@ -285,9 +323,11 @@ g.SetValue(42);               // the needle glides there
 |---|---|
 | `SetRange(min, max)`, `SetValue(v)`, `GetValue()`, `GetShownValue()` | the value (clamped to the range) and where the needle is right now |
 | `SetSweep(startDeg, endDeg)` | degrees clockwise from 12 o'clock; default -90..+90 = half dial, -135..+135 = 270 degrees |
+| `ValueInHub` | `true` (default): the value is shown in a box over the hub, sized for the widest of Min / Max; `false`: text under the dial |
 | `SetTicks(major, minor)` | major intervals and minor ticks between them; numbers at the majors (`ShowTickLabels`, hidden on small dials) |
 | `AddZone(from, to, colour)`, `ClearZones()` | coloured bands along the dial; with `NeedleByZone` (default) the needle and hub take the zone's colour |
 | `SetFormat(decimals, unit)`, `ShowValue` | the value as text under the hub, in the control's font |
 | `Needle` | `NEEDLE_TAPER` (default) or `NEEDLE_LINE`; colours `ColTrack`, `ColTick`, `ColNeedle` |
 | `SetMinMax(windowMs, minDegrees, thickness)` | optional lines for the lowest and highest value `SetValue()` received in the last `windowMs` ms (a value counts for as long as it was held); each line crosses the dial ring centred on its value, `thickness` pixels wide (`MinMaxThickness`, default 2; odd numbers are exactly symmetric), in the inverted colour of the dial segment under it (the zone's colour, or the track's); a line is only drawn when it is at least `minDegrees` from the needle; `windowMs = 0` = off. The lines expire by themselves as old extremes age out. `GetWindowMin()` / `GetWindowMax()` / `ResetMinMax()`. History is a fixed 64 time buckets, so memory stays small however fast you call `SetValue()`. |
 | `SetSmoothing(on, ms)` | on by default (about 250 ms): `SetValue()` starts a glide, driven by `SuperControl::Tick()` from `SuperForm::Service()`; the gauge only redraws while the needle moves. Without a form call `Update()` from `loop()`. Off = the needle jumps. |
+| `SetOnBeforeDraw(fn, user)`, `SetPollMs(ms)` | BeforeDraw (pull model): your function is called from `Tick()` / `Update()` every `ms` milliseconds (0 = every service pass; the first call is at once) and calls `SetValue()`; nothing is drawn while it runs and the control redraws only if something changed |

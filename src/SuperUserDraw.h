@@ -89,7 +89,6 @@ public:
         Repaint();
         return true;
     }
-    void Update() { if (Tick()) Refresh(); }
 
     // ---- touch / edit ----
     bool IsEditing() const override { return State == EDIT_ACTIVE; }

@@ -37,7 +37,10 @@ SuperButton  BtnA(4, true), BtnB(5, true);   // active low
 SuperGauge load(&lcd, 10, 10, 220, /*body height*/ 130, &lgfx::fonts::Font2);          // half dial (-90..+90 degrees), the default
 SuperGauge temp(&lcd, 10, 160, 150, 120, &lgfx::fonts::Font2);
 SuperForm form(&Enc, &BtnA);
-uint32_t last = 0;
+
+// BeforeDraw: the gauges ask for their own readings (every SetPollMs() ms, from form.Service()) and redraw only when the value changed.
+void loadBefore(void*) { load.SetValue(50 + 45 * sinf(millis() * 0.0007f)); }
+void tempBefore(void*) { temp.SetValue(50 + 60 * sinf(millis() * 0.0004f)); }
 
 void setup() {
   Serial.begin(115200);
@@ -57,16 +60,14 @@ void setup() {
   temp.AddZone(-20, 0, TFT_CYAN);  temp.AddZone(0, 90, TFT_GREEN);  temp.AddZone(90, 120, TFT_RED);
   temp.SetFormat(1, " C");
 
+  load.SetOnBeforeDraw(loadBefore);  load.SetPollMs(700);   // a new reading every 0.7 s: the needle glides to it (smoothing is on by default)
+  temp.SetOnBeforeDraw(tempBefore);  temp.SetPollMs(700);
+
   form.Add(&load, false);                       // display only: never focused
   form.Add(&temp, false);
   form.Draw();
 }
 
 void loop() {
-  if (millis() - last > 700) {                  // a new reading: the needle glides to it (smoothing is on by default)
-    last = millis();
-    load.SetValue(50 + 45 * sinf(millis() * 0.0007f));
-    temp.SetValue(50 + 60 * sinf(millis() * 0.0004f));
-  }
-  form.Service();                               // drives the needle glide; without a form call load.Update() / temp.Update() here
+  form.Service();                               // drives the needle glide and calls the BeforeDraw functions; without a form call load.Update() / temp.Update() here
 }

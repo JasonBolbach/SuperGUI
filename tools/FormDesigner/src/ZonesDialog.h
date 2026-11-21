@@ -6,7 +6,8 @@
 //     60 to 85   [0xFFE0]             |  [Add] [Delete] [Move up] [Move down] [Fill 3 bands] [Clear all]
 //     85 to 100  [0xF800]             |  preview: the real gauge with these zones
 //
-// A zone is from..to in the gauge's own units and must end above where it starts (strict: otherwise the field turns red and the old value stays).
+// A zone is from..to in the gauge's own units and must end above where it starts (strict: otherwise the field turns red and the old value stays); on a dial with a
+// wrapping scale (compass, clock) From may be above To: the zone then crosses the top of the dial.
 // Zones may overlap (the later one paints over the earlier); at most 20. "Fill 3 bands" makes green / yellow / red zones over 0-60 %, 60-85 %, 85-100 %
 // of the gauge's Minimum..Maximum. Keys: Up / Down in the zone list, Tab = next field, Insert = Add, Delete, Enter = OK, Esc = Cancel (Esc in a field = back to the list).
 #include <algorithm>
@@ -132,7 +133,8 @@ private:
             const std::string& t = Focus == 0 ? FFrom.text : FTo.text; char* end = nullptr; double v = strtod(t.c_str(), &end);
             if (t.empty() || end == t.c_str() || *end) { Msg = "type a number"; return; }
             double from = Focus == 0 ? v : z.from, to = Focus == 1 ? v : z.to;
-            if (!(from < to)) { Msg = "a zone must end above where it starts"; return; }
+            GaugeZone cand; cand.from = from; cand.to = to;
+            if (!ZoneOk(Proto, cand)) { Msg = Proto.type == C_DIAL && XInt(Proto, "wrap") == 1 ? "a zone needs two different ends (From above To crosses the top)" : "a zone must end above where it starts"; return; }
             z.from = from; z.to = to;
         }
         List->SetItem(Sel, Label(Sel));

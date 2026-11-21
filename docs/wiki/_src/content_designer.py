@@ -32,7 +32,7 @@ build/FormDesigner</code></pre>
 </ol>
 {tip('You do not have to start from nothing: every new form already contains a ready-made <code>msgYesNo</code> confirmation box (see <a href="designer-boxes.html">Message boxes</a>). Delete it if you do not need it.')}
 <h2>What the designer can place</h2>
-<p>Label, Push Button, Check Box, Radio Button, Progress Bar, Spin Box, Slider, Text Box, Input Box, Time Box, Date Box, List Box, Combo Box, Tab Bar, Menu, Gauge, Graph, User Draw, Color Picker and Rich Text. Each is described on its own page under <i>Controls</i>; the designer page for a control only adds how its properties are edited. Message boxes are not placed on the surface: they live in a list (see below).</p>
+<p>Label, Push Button, Check Box, Radio Button, Progress Bar, Spin Box, Slider, Text Box, Input Box, Time Box, Date Box, List Box, Combo Box, Tab Bar, Menu, Gauge, Dial, Graph, User Draw, Color Picker and Rich Text. Each is described on its own page under <i>Controls</i>; the designer page for a control only adds how its properties are edited. Message boxes are not placed on the surface: they live in a list (see below).</p>
 ''')
 
 add('designer-usage', 'Using the designer', 'Surface, panel, zoom, files, shortcuts', f'''
@@ -46,7 +46,7 @@ add('designer-usage', 'Using the designer', 'Surface, panel, zoom, files, shortc
 <tr><td>Click toolbox item, click form</td><td>Place a control at the clicked spot (snapped to the grid)</td></tr>
 <tr><td>Drag a control</td><td>Move it (snapped to the grid)</td></tr>
 <tr><td>Drag a side handle</td><td>Change the width (most controls&rsquo; height follows their font)</td></tr>
-<tr><td>Drag a top or bottom handle</td><td>Change the height of a <b>list box, menu, gauge, graph, user draw or rich text</b> (the other controls&rsquo; height follows their font, so they have no such handles). The top handle keeps the bottom edge fixed. List boxes and menus snap to <b>whole rows</b>, rich text to <b>whole lines</b> of its font, the others to the grid.</td></tr>
+<tr><td>Drag a top or bottom handle</td><td>Change the height of a <b>list box, menu, gauge, dial, graph, user draw or rich text</b> (the other controls&rsquo; height follows their font, so they have no such handles). The top handle keeps the bottom edge fixed. List boxes and menus snap to <b>whole rows</b>, rich text to <b>whole lines</b> of its font, the others to the grid.</td></tr>
 <tr><td>Arrows / Shift + arrows</td><td>Nudge by 1 pixel / by one grid step</td></tr>
 <tr><td>Tab, Delete</td><td>Select the next control; delete the selected one</td></tr>
 <tr><td><code>G</code></td><td>Change the grid step (1 = off)</td></tr>
@@ -75,7 +75,7 @@ add('designer-code', 'Generated code and your file', 'What Export writes and how
 <table><tr><th>File</th><th>Who owns it</th><th>What is in it</th></tr>
 <tr><td><code>Form1.designer.h</code></td><td>The designer. Regenerated on every export: <b>never edit it</b>.</td><td>Class <code>Form1Base</code>: every control as a public member, the <code>SuperForm</code>, constants, <code>InitializeComponent()</code>, <code>Show()</code>, <code>Service()</code>, and one empty virtual handler per event.</td></tr>
 <tr><td><code>Form1.h</code></td><td>You. Written once, never changed again.</td><td>Class <code>Form1 : Form1Base</code> with a constructor for your start-up code and an <code>override</code> stub per handler.</td></tr></table>
-<p>Every export of an existing <code>Form1.h</code> also keeps a snapshot of it next to it, named <code>Form1.yyyy_mm_dd_hh_mm_ss.h.txt</code> (a <code>.txt</code> so nothing ever includes it). If you ever overwrite your file by accident, the last export's copy has it. The snapshots are never deleted: tidy them up when you like.</p>
+<p>Export never changes an existing <code>Form1.h</code>. Instead the new code is written next to it as <code>Form1.yyyy_mm_dd_hh_mm_ss.h</code>: copy what you need from it into your file. These files are never deleted: tidy them up when you like.</p>
 <h2>Using it in a sketch</h2>
 <pre><code>#include "Form1.h"
 Form1 ui(&amp;lcd, &amp;Enc, &amp;BtnA, &amp;BtnB);   // display, encoder, two buttons
@@ -91,7 +91,8 @@ void loop()  {{ ui.Service(); }}              // focus, editing, touch, handlers
 <tr><td>Menu</td><td><code>menu1_Choose(uint16_t id)</code> with one <code>case</code> per command, plus <code>menu1_Change()</code></td></tr>
 <tr><td>User draw</td><td><code>scope_Draw(spr, body)</code>, and with Touch input <code>scope_Pointer(e)</code> and <code>scope_Accept()</code></td></tr>
 <tr><td>Rich text</td><td><code>name_Accept()</code> (the user closed the text with ButtonA)</td></tr>
-<tr><td>Gauge, graph, text box, label, progress bar</td><td>none (display only). Update them from your code: <code>load.SetValue(v)</code>, <code>trace.AddSample(v)</code>.</td></tr></table>
+<tr><td>Text box, label, progress bar</td><td>none (display only). Update them from your code.</td></tr>
+<tr><td>Any control</td><td><code>BeforeDraw</code> (off by default; switch it on with the <i>BeforeDraw</i> row) &rarr; <code>gg1_BeforeDraw()</code>: the control calls it every <i>BeforeDraw (ms)</i> milliseconds (0 = on every <code>Service()</code>) and redraws only if you changed something in it. Put the code that reads your sensor or clock there: <code>gg1.SetValue(v)</code>, <code>lbl1.SetText("...")</code>, <code>grf1.AddSample(v)</code>, <code>dl1.SetTime(h, m, s)</code>, <code>dl1.SetHeading(deg)</code>. Not called while the user is editing the control. Nothing is drawn while it runs.</td></tr></table>
 <p>To react to an event, write the <code>override</code> in <code>Form1.h</code>:</p>
 <pre><code>protected:
   void okBtn_Click() override {{ if (msgYesNo_Ask() == MSG_YESNO_YES) Save(); }}
@@ -101,6 +102,7 @@ void loop()  {{ ui.Service(); }}              // focus, editing, touch, handlers
 <h2>Constants you get</h2>
 <ul><li><code>MNU_...</code> for every menu command, <code>GRP_...</code> for every control group, <code>MSG_...</code> for named message box buttons, and <code>MSG_CANCELLED</code> / <code>MSG_PENDING</code>. Use them instead of numbers.</li></ul>
 {tip('The constructor takes <b>both</b> buttons: <code>Form1(dst, enc, btnA, btnB)</code>. Older exports took only one; re-export and pass <code>&amp;BtnB</code> too.')}
+{tip('<b>Touch screen:</b> add a <code>SuperTouch</code> as an optional last argument, <code>Form1(dst, enc, btnA, btnB, &amp;touch)</code> (default <code>nullptr</code> = no touch). The generated code passes it to the form with <code>Form.SetTouch()</code>; you never call that yourself. <code>Form1.h</code> is written only once, so an older file needs the extra argument added by hand (or delete it and export again).')}
 {warn('Do not put your code in <code>Form1.designer.h</code>. The next export replaces the whole file and your changes are gone. Everything of yours goes in <code>Form1.h</code>.')}
 ''')
 
@@ -213,7 +215,8 @@ add('designer-tips', 'Designer tips, tricks and pitfalls', 'Things that save tim
 {tip('<b>Gauge:</b> the Zones dialog has <b>Fill 3 bands</b> (green / yellow / red at 60 / 85 / 100 % of the range). Update the needle with <code>load.SetValue(v)</code>.')}
 {tip('<b>Graph:</b> <i>Preview data</i> (Sine / Rising / Noise) only exists so the designer shows something. It is not generated: feed the real graph with <code>trace.AddSample(v)</code>.')}
 {tip('<b>Press <code>?</code></b> in the designer for the key list. A <b>Rich text</b> control is a good place for your own help screen: write it in the editor, scroll it with the encoder.')}
-{tip('<b>Heights:</b> the <i>Height</i> row (list box, menu, gauge, graph, user draw, rich text) takes the total height including the frame; type a number and it snaps to the nearest whole row or line. It changes the same thing as <i>Visible rows</i> / <i>Body height</i>.')}
+{tip('<b>Dial:</b> the <i>Preset</i> row fills in a whole face (Gauge, Compass, Clock or Tachometer): scale, ticks, labels, zones and pointers. Change anything afterwards. The dial has up to three pointers (the <i>Pointers</i> row); a pointer set to <i>on card</i> turns with the face. The <i>BeforeDraw (ms)</i> row sets how often your <code>BeforeDraw</code> handler runs. <i>Face rotation</i> is the starting angle; your code moves it with <code>SetHeading()</code> or <code>SetFaceRotation()</code>. A wrapping scale runs from 0, so Minimum must be 0; there a zone may cross the top (<i>From</i> above <i>To</i>, e.g. 300 to 40).')}
+{tip('<b>Heights:</b> the <i>Height</i> row (list box, menu, gauge, dial, graph, user draw, rich text) takes the total height including the frame; type a number and it snaps to the nearest whole row or line. It changes the same thing as <i>Visible rows</i> / <i>Body height</i>.')}
 {tip('<b>Tab order:</b> add the controls in the order the user should visit them, or type the numbers in the Tab order row (1, 2, 3 ... or 10, 20, 30 to leave room). Display-only controls (labels, gauges ...) have no tab number.')}
 {tip('<b>Overlapping controls:</b> select one in the Controls On Form list and use <b>Front</b> / <b>Back</b>. The list reads from back (top of the list) to front (bottom).')}
 {tip('<b>Pages:</b> design every page in the same area of the form and use the <b>View</b> button to edit one page at a time.')}
@@ -222,7 +225,7 @@ add('designer-tips', 'Designer tips, tricks and pitfalls', 'Things that save tim
 {warn('<b>Editing <code>Form1.designer.h</code>.</b> It is overwritten on every export. Your code belongs in <code>Form1.h</code>.')}
 {warn('<b>A new handler is not in your file.</b> After you add a control, export and read the status line: it names the handlers <code>Form1.h</code> does not have. Copy the stubs from the <code>protected:</code> list.')}
 {warn('<b>Names are strictly checked.</b> A C++ keyword (<code>class</code>, <code>int</code>), a library or Arduino name (<code>delay</code>, <code>Serial</code>, <code>PI</code>, <code>HIGH</code>), a pin name (<code>A0</code>, <code>D13</code>), a macro defined by the headers, a name starting with an underscore or <code>fd_</code>, or one that ends like a handler (<code>x_Click</code>) is refused. Two things can never share a name: controls, radio groups, menu IDs, control groups, message boxes and their button names, and the form (<code>Form1</code>, <code>Form1Base</code>).')}
-{warn('<b>The constructor needs both buttons</b>: <code>(dst, enc, btnA, btnB)</code>.')}
+{warn('<b>The constructor needs both buttons</b>: <code>(dst, enc, btnA, btnB)</code>, plus the optional <code>touch</code>.')}
 {warn('<b>A group show overrides Visible</b> unless the form&rsquo;s <b>Keep hidden</b> row is Yes: then a Visible = No control stays hidden when its group (or tab page) is shown; <code>ctl.SetVisible(true)</code> shows it.')}
 {warn('<b>Text is US-ASCII.</b> Accented letters and symbols outside the printable ASCII range are dropped when typed, pasted or loaded.')}
 {warn('<b>Message boxes block.</b> <code>_Ask()</code> does not return until the user answers. Use <code>_Open()</code> / <code>_Poll()</code> in a loop that must keep running.')}

@@ -21,6 +21,7 @@
 #include <SuperMenu.h>
 #include <SuperForm.h>
 #include <SuperGauge.h>
+#include <SuperDial.h>
 #include <SuperGraph.h>
 #include <SuperUserDraw.h>
 #include <SuperColorPicker.h>
@@ -74,6 +75,7 @@ inline std::unique_ptr<SuperControl> MakeControl(lgfx::LovyanGFX* dst, const DCo
     case C_TABBAR:     p.reset(new SuperTabBar(dst, x, y, c.w, font, nullptr, nullptr, nullptr)); break;
     case C_MENU:       p.reset(new SuperMenu(dst, x, y, c.w, font, (int)XInt(c, "rows"), nullptr, nullptr, nullptr)); break;
     case C_GAUGE:      p.reset(new SuperGauge(dst, x, y, c.w, (int)XInt(c, "bodyHeight"), font)); break;
+    case C_DIAL:       p.reset(new SuperDial(dst, x, y, c.w, (int)XInt(c, "bodyHeight"), font)); break;
     case C_GRAPH:      p.reset(new SuperGraph(dst, x, y, c.w, font, (int)XInt(c, "bodyHeight"))); break;
     case C_USERDRAW:   p.reset(new SuperUserDraw(dst, x, y, c.w, (int)XInt(c, "bodyHeight"), font)); break;
     case C_COLORPICKER: p.reset(new SuperColorPicker(dst, x, y, c.w, font, nullptr, nullptr, nullptr)); break;
@@ -153,11 +155,27 @@ inline std::unique_ptr<SuperControl> MakeControl(lgfx::LovyanGFX* dst, const DCo
         auto* g = static_cast<SuperGauge*>(p.get());
         g->SetRange((float)XFloat(c, "min"), (float)XFloat(c, "max")); g->SetSweep((float)XInt(c, "sweepStart"), (float)XInt(c, "sweepEnd")); g->SetTicks((int)XInt(c, "majorTicks"), (int)XInt(c, "minorTicks"));
         g->ShowTickLabels = XBool(c, "tickLabels"); g->SetFormat((int)XInt(c, "decimals"), XStr(c, "unit")); g->ShowValue = XBool(c, "showValue");
-        g->Needle = (SuperGauge::NeedleStyle)XInt(c, "needle"); g->NeedleByZone = XBool(c, "needleByZone");
+        g->Needle = (SuperGauge::NeedleStyle)XInt(c, "needle"); g->NeedleByZone = XBool(c, "needleByZone"); g->ValueInHub = XBool(c, "valueInHub");
         g->ColTrack = (uint16_t)XInt(c, "trackColor"); g->ColTick = (uint16_t)XInt(c, "tickColor"); g->ColNeedle = (uint16_t)XInt(c, "needleColor");
         for (const GaugeZone& z : c.zones) g->AddZone((float)z.from, (float)z.to, z.color);
         if (XInt(c, "minMaxMs") > 0) g->SetMinMax((int)XInt(c, "minMaxMs"), (float)XFloat(c, "minMaxDeg"), (int)XInt(c, "minMaxThick"));
         g->SetSmoothing(false); g->SetValue((float)XFloat(c, "value"));                      // (the picture is static: the needle is at the value at once)
+        break; }
+    case C_DIAL: {
+        auto* d = static_cast<SuperDial*>(p.get());
+        if (XInt(c, "wrap") == 1) d->SetWrap((float)XFloat(c, "max"), (float)XInt(c, "sweepStart")); else d->SetSweep((float)XFloat(c, "min"), (float)XFloat(c, "max"), (float)XInt(c, "sweepStart"), (float)XInt(c, "sweepEnd"));
+        d->SetTicks((int)XInt(c, "majorTicks"), (int)XInt(c, "minorTicks")); d->SetTickLabels(DialLabels(c)); d->ShowTickLabels = XBool(c, "tickLabels");
+        d->SetFormat((int)XInt(c, "decimals"), XStr(c, "unit")); d->ShowValue = XBool(c, "showValue"); d->ValueInHub = XBool(c, "valueInHub"); d->ValuePointer = (int)XInt(c, "valuePointer");
+        d->ColFace = (uint16_t)XInt(c, "faceColor"); d->ColRim = (uint16_t)XInt(c, "rimColor"); d->ColTick = (uint16_t)XInt(c, "tickColor"); d->ColHub = (uint16_t)XInt(c, "hubColor");
+        d->ZoneThickness = (int)XInt(c, "zoneThick");
+        for (const GaugeZone& z : c.zones) d->AddZone((float)z.from, (float)z.to, z.color);
+        d->SetSmoothing(false);                                                              // (the picture is static: the pointers are at their values at once)
+        for (int i = 1; i <= (int)XInt(c, "pointers"); ++i) {
+            std::string k = "p" + std::to_string(i);
+            int at = d->AddPointer((float)XFloat(c, (k + "Length").c_str()), (int)XInt(c, (k + "Width").c_str()), (uint16_t)XInt(c, (k + "Color").c_str()), (SuperDial::PointerStyle)XInt(c, (k + "Style").c_str()), XBool(c, (k + "Face").c_str()));
+            d->SetPointerValue(at, (float)XFloat(c, (k + "Value").c_str()));
+        }
+        d->SetFaceRotation((float)XFloat(c, "faceRotation"));
         break; }
     case C_GRAPH: {
         auto* g = static_cast<SuperGraph*>(p.get());
@@ -203,6 +221,32 @@ inline std::unique_ptr<SuperControl> MakeControl(lgfx::LovyanGFX* dst, const DCo
     // no ApplyTheme: the controls' own defaults (which equal SuperTheme::Dark) are what the device draws unless the sketch sets a theme
     return p;
 }
+// The dial presets (the "Preset" row): the scale, ticks, labels, zones and pointers of a circular gauge, a compass, a clock and a tachometer. Colours, font and the frame are kept.
+inline void ApplyDialPreset(DControl& c, int kind) {
+    if (c.type != C_DIAL) return;
+    auto S = [&](const std::string& k, const std::string& v) { if (const ExtraDef* d = FindExtra(C_DIAL, k.c_str())) ExtraSet(c, *d, v); };
+    auto P = [&](int i, const char* val, const char* len, const char* w, const char* col, int style, bool card) {
+        std::string k = "p" + std::to_string(i); S(k + "Value", val); S(k + "Length", len); S(k + "Width", w); S(k + "Color", col); S(k + "Style", std::to_string(style)); S(k + "Face", card ? "true" : "false");
+    };
+    S("faceRotation", "0"); S("labels", ""); S("tickLabels", "true"); S("decimals", "0"); S("unit", ""); S("valuePointer", "0"); S("zoneThick", "0"); c.zones.clear();
+    if (kind == 1) {                                                                  // compass: N E S W card, a red pointer at the top, a bearing marker on the card
+        S("wrap", "1"); S("min", "0"); S("max", "360"); S("sweepStart", "0"); S("sweepEnd", "360"); S("majorTicks", "8"); S("minorTicks", "2");
+        S("labels", "N,NE,E,SE,S,SW,W,NW"); S("showValue", "false"); S("pointers", "2");
+        P(1, "0", "0.9", "5", "0xF800", 2, false); P(2, "90", "0.6", "3", "0x07FF", 1, true);
+    } else if (kind == 2) {                                                           // clock: 12 hours, three hands (10:08:30)
+        S("wrap", "1"); S("min", "0"); S("max", "12"); S("sweepStart", "0"); S("sweepEnd", "360"); S("majorTicks", "12"); S("minorTicks", "4");
+        S("showValue", "false"); S("pointers", "3");
+        P(1, "10.14", "0.5", "6", "0xFFFF", 0, false); P(2, "1.7", "0.8", "4", "0xFFFF", 0, false); P(3, "6", "0.9", "2", "0xF800", 2, false);
+    } else if (kind == 3) {                                                           // tachometer: 0..8 (x1000 rpm) over 270 degrees, a red line
+        S("wrap", "0"); S("min", "0"); S("max", "8"); S("sweepStart", "-135"); S("sweepEnd", "135"); S("majorTicks", "8"); S("minorTicks", "4");
+        S("unit", "k"); S("decimals", "1"); S("showValue", "true"); S("valueInHub", "true"); S("pointers", "1"); P(1, "3.5", "0.9", "6", "0xFFFF", 0, false);
+        c.zones = { { 0, 6, 0x07E0 }, { 6, 7, 0xFFE0 }, { 7, 8, 0xF800 } };
+    } else {                                                                          // circular gauge: 0..100 over 270 degrees with green / yellow / red bands
+        S("wrap", "0"); S("min", "0"); S("max", "100"); S("sweepStart", "-135"); S("sweepEnd", "135"); S("majorTicks", "10"); S("minorTicks", "1");
+        S("unit", "%"); S("showValue", "true"); S("valueInHub", "true"); S("pointers", "1"); P(1, "42", "0.9", "4", "0xFFFF", 0, false);
+        c.zones = { { 0, 60, 0x07E0 }, { 60, 85, 0xFFE0 }, { 85, 100, 0xF800 } };
+    }
+}
 // A gauge's value is pulled into its range (changing Minimum / Maximum moves the needle instead of refusing).
 inline void ClampGaugeValue(DControl& c) {
     if (c.type != C_GAUGE) return;
@@ -240,6 +284,14 @@ inline std::string Validate(lgfx::LovyanGFX* dst, const DControl& c) {
         if (XFloat(c, "value") < XFloat(c, "min") || XFloat(c, "value") > XFloat(c, "max")) return "Value must be between Minimum and Maximum";
         if (XInt(c, "sweepEnd") <= XInt(c, "sweepStart")) return "the sweep must end after it starts (start -90, end 90 is a half dial)";
         for (const GaugeZone& z : c.zones) if (!(z.from < z.to)) return "a zone must end above where it starts";
+        return "";
+    case C_DIAL:
+        if (XFloat(c, "max") <= XFloat(c, "min")) return "Maximum must be above Minimum";
+        if (XInt(c, "wrap") == 1) { if (XFloat(c, "min") != 0) return "a wrapping scale runs from 0: set Minimum to 0 (the compass is 0 to 360, a clock 0 to 12)"; }
+        else if (XInt(c, "sweepEnd") <= XInt(c, "sweepStart")) return "the sweep must end after it starts (start -135, end 135 is a 270 degree dial)";
+        if (XInt(c, "majorTicks") * (XInt(c, "minorTicks") + 1) > 360) return "too many ticks (major ticks x (minor ticks + 1) is at most 360)";
+        if (XInt(c, "valuePointer") >= std::max(1L, XInt(c, "pointers"))) return "Value pointer must be one of the pointers (0 is the first)";
+        for (const GaugeZone& z : c.zones) if (!ZoneOk(c, z)) return XInt(c, "wrap") == 1 ? "a zone needs two different ends (From above To crosses the top of the dial)" : "a zone must end above where it starts (only a wrapping scale lets a zone cross the top)";
         return "";
     case C_GRAPH:
         if (!XBool(c, "autoRange") && XFloat(c, "rangeMax") <= XFloat(c, "rangeMin")) return "Range to must be above Range from";
@@ -284,7 +336,7 @@ inline int ControlHeight(lgfx::LovyanGFX* dst, const DControl& c) { DControl t =
 //  H_ROWS: a list box or menu: the height is a whole number of rows ("rows"), so it snaps to full rows.
 //  H_BODY: gauge, graph, user draw, rich text: the height of the picture inside the frame ("bodyHeight"); rich text snaps to whole lines of text (the font's line height), the others are free.
 enum HeightKind { H_FIXED = 0, H_ROWS, H_BODY };
-inline int HeightKindOf(int type) { return type == C_LISTBOX || type == C_MENU ? H_ROWS : type == C_GAUGE || type == C_GRAPH || type == C_USERDRAW || type == C_RICHTEXT ? H_BODY : H_FIXED; }
+inline int HeightKindOf(int type) { return type == C_LISTBOX || type == C_MENU ? H_ROWS : type == C_GAUGE || type == C_DIAL || type == C_GRAPH || type == C_USERDRAW || type == C_RICHTEXT ? H_BODY : H_FIXED; }
 struct HeightInfo { int kind = H_FIXED, unit = 1, overhead = 0, minH = 0, maxH = 0; const ExtraDef* def = nullptr; };
 // total height = overhead (frame, padding, label) + n * unit, n limited by the extra's limits
 inline HeightInfo HeightOf(lgfx::LovyanGFX* dst, const DControl& c) {

@@ -19,6 +19,7 @@
 //  * DrawPreview(highlight) redraws the control without any input handling and (optionally) draws a
 //    highlight box around it, so a GUI can walk the user through a set of controls.
 #include <LovyanGFX.hpp>
+#include "SuperBeforeDraw.h"
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -64,7 +65,7 @@ public:
     // then static_cast. (No RTTI / dynamic_cast needed.) Each library control reports its own type, so a SpinBox is ControlType::SpinBox, not TextBox, even
     // though it derives from SuperTextBox. Your own subclasses report User unless they override GetControlType().
     enum class ControlType : uint8_t { User = 0, Label, PushButton, CheckBox, RadioButton, ProgressBar, SpinBox, Slider, TextBox, InputBox, FieldBox, TimeBox, DateBox,
-                                       ListBox, ComboBox, TabBar, Menu, Gauge, Graph, UserDraw, ColorPicker, RichText, MessageBox };
+                                       ListBox, ComboBox, TabBar, Menu, Gauge, Graph, UserDraw, ColorPicker, RichText, MessageBox, Dial };
 
     // ---- colours (RGB565) ----
     uint16_t ColBg           = 0x0000;
@@ -258,6 +259,7 @@ public:
 
     // ---- editing (controls that can be edited override StartEdit / Service) ----
     // Blocking: returns true if the edit was accepted. Non-blocking: StartEdit() then Service() often.
+    virtual void SetAbort(bool (*)()) {}                          // controls with an edit session poll this; true cancels the edit (see SuperEditIO). Others ignore it. SuperForm::SetAbort sets it on every control.
     virtual bool IsEditing() const { return false; }
     virtual bool StartEdit() { return false; }
     virtual SuperEditState Service() { return EDIT_IDLE; }
@@ -295,6 +297,22 @@ public:
     // redraws it in its proper look (focused or dimmed). Without a form, call it yourself from loop().
     virtual bool Tick() { return false; }
 
+    // ---- BeforeDraw: every control can ask your code for its values (pull model, see SuperBeforeDraw.h) ----
+    //   c.SetOnBeforeDraw(fn, user);  c.SetPollMs(ms);   // fn(void* user) is called from SuperForm::Service() / Update() every ms milliseconds (0 = every pass)
+    // Set the control's values in fn (SetText, SetValue, SetChecked, ...). Nothing is drawn while fn runs; the control redraws once afterwards, and only
+    // if something changed. A control that is being edited, or is hidden, is not asked.
+    void SetOnBeforeDraw(void (*fn)(void*), void* user = nullptr) { Before.Fn = fn; Before.User = user; }
+    void SetPollMs(int ms)                  { Before.PollMs = ms < 0 ? 0 : ms; }
+    // Runs fn when it is due. True = the control needs a redraw now. (SuperForm::Service() calls this; without a form call Update().)
+    bool RunBeforeDraw() {
+        if (!Before.Fn || !VisibleFlag || IsEditing()) return false;
+        if (!Before.Run(lgfx::millis())) return false;
+        AfterBeforeDraw();
+        return Dirty;
+    }
+    // The form-less driver: runs BeforeDraw and Tick() and redraws if either asks for it. Call it from loop() for a control that is not in a SuperForm.
+    virtual void Update() { bool b = RunBeforeDraw(), t = Tick(); if (b || t) Refresh(); }
+
     // ---- label ----
     void SetLabel(const std::string& text, LabelPos pos = LABEL_ABOVE) { Label = text; LabelPosition = pos; Dirty = true; }
     void SetLabelFont(const lgfx::IFont* f) { LabelFont = f; Dirty = true; }     // default: the control's font at construction
@@ -324,6 +342,7 @@ public:
     void Refresh()    { if (Dirty && VisibleFlag) Push(); }                       // redraw + push only if something changed
     void Push() {                                                  // always redraw + push
         if (!VisibleFlag) return;
+        if (Before.Running) { Dirty = true; return; }               // inside a BeforeDraw function: no drawing, the form redraws once afterwards
         uint32_t t0 = CollectStats ? (uint32_t)lgfx::micros() : 0;
         if (!Render()) { ShowAllocFailure(); return; }
         uint32_t t1 = CollectStats ? (uint32_t)lgfx::micros() : 0;
@@ -381,6 +400,7 @@ protected:
     virtual int  BodyHeight() { return FontH(); }                  // inner (content) height
     virtual void RenderBody(int x, int y, int w, int h) = 0;       // draw inside the inner area (sprite coords)
     virtual void OnFontChanged() {}
+    virtual void AfterBeforeDraw() {}                              // the BeforeDraw function just ran (a control may notice what it changed)
 
     int FontH()     { Spr.setFont(Font); return Spr.fontHeight(); }
     int EffBorder() { return std::max(0, std::min(BorderReq, std::min((W - 1) / 2, FontH() / 2))); }
@@ -394,6 +414,7 @@ protected:
     int                PosX, PosY, W;
     const lgfx::IFont* Font;
     bool               Dirty = true;
+    SuperBeforeDraw    Before;
     bool               EnabledFlag = true, VisibleFlag = true, KeepHiddenFlag = false;
     Align              Alignment = ALIGN_LEFT;
 

@@ -29,7 +29,7 @@ public:
         Sync();
     }
 
-    void SetAbort(bool (*fn)()) { IO.Abort = fn; }
+    void SetAbort(bool (*fn)()) override { IO.Abort = fn; }
     // OnChange: the value being edited changed (live). OnAccept: an edit was accepted (GetValue() is new).
     void SetOnChange(void (*fn)(void*), void* user = nullptr) { IO.OnChange = fn; IO.OnChangeUser = user; }
     void SetOnAccept(void (*fn)(void*), void* user = nullptr) { IO.OnAccept = fn; IO.OnAcceptUser = user; }
@@ -91,7 +91,7 @@ public:
         return SuperPointerDefault(IO, *this, e);
     }
 
-    bool StartEdit() {                                             // non-blocking: then call Service()
+    bool StartEdit() override {                                             // non-blocking: then call Service()
         Work = Value;
         IO.Flush();
         State = EDIT_ACTIVE;
@@ -100,7 +100,7 @@ public:
     }
 
     // Returns EDIT_ACTIVE while editing, then EDIT_ACCEPTED or EDIT_CANCELLED once, then EDIT_IDLE.
-    SuperEditState Service() {
+    SuperEditState Service() override {
         if (State != EDIT_ACTIVE) return EDIT_IDLE;
         if (IO.Aborted()) return Finish(EDIT_CANCELLED);
         bool redraw = false;

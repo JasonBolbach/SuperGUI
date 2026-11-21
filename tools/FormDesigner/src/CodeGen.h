@@ -9,7 +9,7 @@
 //   public:
 //       SuperLabel title; SuperPushButton okBtn; ...          // the controls
 //       SuperForm Form;
-//       Form1Base(lgfx::LovyanGFX* dst, SuperEncoder* enc, SuperButton* btnA);
+//       Form1Base(lgfx::LovyanGFX* dst, SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB, SuperTouch* touch = nullptr);
 //       void Show();                                          // clears the screen to the form's back colour, draws everything
 //       SuperEditState Service();                             // call every loop pass
 //   protected:
@@ -43,7 +43,7 @@ inline std::string HexColor(uint16_t c) { char b[8]; snprintf(b, sizeof b, "0x%0
 inline std::string DesignerFileName(const DForm& f) { return f.name + ".designer.h"; }
 
 inline const char* HeaderOf(int type) {
-    static const char* h[C_COUNT] = { "SuperLabel.h", "SuperPushButton.h", "SuperCheckBox.h", "SuperRadioButton.h", "SuperProgressBar.h", "SuperSpinBox.h", "SuperSlider.h", "SuperTextBox.h", "SuperInputBox.h", "SuperTimeBox.h", "SuperTimeBox.h", "SuperListBox.h", "SuperComboBox.h", "SuperTabBar.h", "SuperMenu.h", "SuperGauge.h", "SuperGraph.h", "SuperUserDraw.h", "SuperColorPicker.h", "SuperRichText.h" };
+    static const char* h[C_COUNT] = { "SuperLabel.h", "SuperPushButton.h", "SuperCheckBox.h", "SuperRadioButton.h", "SuperProgressBar.h", "SuperSpinBox.h", "SuperSlider.h", "SuperTextBox.h", "SuperInputBox.h", "SuperTimeBox.h", "SuperTimeBox.h", "SuperListBox.h", "SuperComboBox.h", "SuperTabBar.h", "SuperMenu.h", "SuperGauge.h", "SuperGraph.h", "SuperUserDraw.h", "SuperColorPicker.h", "SuperRichText.h" , "SuperDial.h" };
     return h[type];
 }
 // The events a control raises: the handler is <control>_<Name>() and it is connected with control.<setter>(thunk, this).
@@ -81,7 +81,20 @@ inline std::vector<EventDef> EventsOf(int type) {
 // The events this control really has (a user-draw control has Pointer and Accept only when Touch input is on).
 inline std::vector<EventDef> EventsOf(const DControl& c) {
     std::vector<EventDef> v = EventsOf(static_cast<int>(c.type));
-    if (c.type == C_USERDRAW && !XBool(c, "touch")) v.erase(std::remove_if(v.begin(), v.end(), [](const EventDef& e) { return std::string(e.name) != "Draw"; }), v.end());
+    if (XBool(c, "beforeDraw")) {                                                  // every control can ask for its values before it is drawn
+        static const struct { int type; const char* example; } ex[] = {
+            { C_LABEL, "%s.SetText(\"...\")" }, { C_PUSHBUTTON, "%s.SetEnabled(allowed)" }, { C_CHECKBOX, "%s.SetChecked(state)" }, { C_RADIO, "%s.SetChecked(state)" },
+            { C_PROGRESS, "%s.SetValue(percent)" }, { C_SPINBOX, "%s.SetValue(n)" }, { C_SLIDER, "%s.SetValue(n)" }, { C_TEXTBOX, "%s.SetText(\"...\")" },
+            { C_INPUTBOX, "%s.SetValue(\"...\")" }, { C_TIMEBOX, "%s.SetTime(h, m, s)" }, { C_DATEBOX, "%s.SetDate(y, m, d)" }, { C_LISTBOX, "%s.SetSelected(i)" },
+            { C_COMBOBOX, "%s.SetSelected(i)" }, { C_TABBAR, "%s.SetSelected(i)" }, { C_GAUGE, "%s.SetValue(reading)" }, { C_GRAPH, "%s.AddSample(reading)" },
+            { C_USERDRAW, "%s.Repaint()" }, { C_COLORPICKER, "%s.SetColor565(c)" }, { C_DIAL, "%s.SetPointerValue(0, v), %s.SetTime(h, m, s) or %s.SetHeading(degrees)" } };
+        std::string e = "%s.SetVisible(true)";
+        for (const auto& x : ex) if (x.type == c.type) e = x.example;
+        std::string hint = "%s: set the control's values here, before it is redrawn, e.g. " + e + ". It is called every \"BeforeDraw (ms)\" milliseconds (0 = on every Service() pass), not while the user is editing the control. Nothing is drawn while this runs, and the control redraws only if something changed.";
+        static std::set<std::string> pool;                                              // the EventDef keeps a pointer: the text lives here
+        v.push_back({ "BeforeDraw", "SetOnBeforeDraw", pool.insert(hint).first->c_str() });
+    }
+    if (c.type == C_USERDRAW && !XBool(c, "touch")) v.erase(std::remove_if(v.begin(), v.end(), [](const EventDef& e) { return std::string(e.name) != "Draw" && std::string(e.name) != "BeforeDraw"; }), v.end());
     return v;
 }
 // every handler the Base declares, as "name_Event"
@@ -91,7 +104,7 @@ inline std::vector<std::string> HandlerNames(const DForm& f) {
     return v;
 }
 inline bool HasPages(const DControl& c) { if (c.type != C_TABBAR) return false; for (const std::string& p : c.pages) if (!p.empty()) return true; return false; }
-inline bool Focusable(const DControl& c) { return c.type != C_LABEL && c.type != C_PROGRESS && c.type != C_TEXTBOX && c.type != C_GAUGE && c.type != C_GRAPH && !(c.type == C_USERDRAW && !XBool(c, "touch")); }
+inline bool Focusable(const DControl& c) { return c.type != C_LABEL && c.type != C_PROGRESS && c.type != C_TEXTBOX && c.type != C_GAUGE && c.type != C_DIAL && c.type != C_GRAPH && !(c.type == C_USERDRAW && !XBool(c, "touch")); }
 inline std::string FloatLit(double x) { std::string t = FloatText(x); if (t.find('.') == std::string::npos) t += ".0"; return t + "f"; }
 inline std::string CppChar(char c) { return c == '\'' ? "'\\''" : c == '\\' ? "'\\\\'" : std::string("'") + c + "'"; }
 
@@ -140,6 +153,7 @@ inline void EmitExtras(std::ostringstream& o, const DControl& c) {
         if (XSet(c, "decimals") || XSet(c, "unit")) o << "        " << n << ".SetFormat(" << XInt(c, "decimals") << ", " << CppString(XStr(c, "unit")) << ");\n";
         if (!XBool(c, "showValue")) o << "        " << n << ".ShowValue = false;\n";
         if (XInt(c, "needle") == 1) o << "        " << n << ".Needle = SuperGauge::NEEDLE_LINE;\n";
+        if (!XBool(c, "valueInHub")) o << "        " << n << ".ValueInHub = false;\n";
         if (!XBool(c, "needleByZone")) o << "        " << n << ".NeedleByZone = false;\n";
         if (XSet(c, "trackColor")) o << "        " << n << ".ColTrack = " << HexColor((uint16_t)XInt(c, "trackColor")) << ";\n";
         if (XSet(c, "tickColor")) o << "        " << n << ".ColTick = " << HexColor((uint16_t)XInt(c, "tickColor")) << ";\n";
@@ -149,6 +163,37 @@ inline void EmitExtras(std::ostringstream& o, const DControl& c) {
         if (!XBool(c, "smoothing")) o << "        " << n << ".SetSmoothing(false);\n";
         else if (XSet(c, "smoothMs")) o << "        " << n << ".SetSmoothing(true, " << XInt(c, "smoothMs") << ");\n";
         if (XSet(c, "value")) o << "        " << n << ".SetValue(" << FloatLit(XFloat(c, "value")) << ");\n";                       // last: the range and the zones are in place
+    }
+    if (c.type == C_DIAL) {
+        const bool wrap = XInt(c, "wrap") == 1;
+        if (wrap) o << "        " << n << ".SetWrap(" << FloatLit(XFloat(c, "max")) << (XInt(c, "sweepStart") != 0 ? ", " + FloatLit((double)XInt(c, "sweepStart")) : std::string()) << ");\n";
+        else o << "        " << n << ".SetSweep(" << FloatLit(XFloat(c, "min")) << ", " << FloatLit(XFloat(c, "max")) << ", " << FloatLit((double)XInt(c, "sweepStart")) << ", " << FloatLit((double)XInt(c, "sweepEnd")) << ");\n";
+        o << "        " << n << ".SetTicks(" << XInt(c, "majorTicks") << ", " << XInt(c, "minorTicks") << ");\n";
+        std::vector<std::string> lab = DialLabels(c);
+        if (!lab.empty()) { o << "        " << n << ".SetTickLabels({ "; for (size_t i = 0; i < lab.size(); ++i) o << (i ? ", " : "") << CppString(lab[i]); o << " });\n"; }
+        if (!XBool(c, "tickLabels")) o << "        " << n << ".ShowTickLabels = false;\n";
+        if (XSet(c, "decimals") || XSet(c, "unit")) o << "        " << n << ".SetFormat(" << XInt(c, "decimals") << ", " << CppString(XStr(c, "unit")) << ");\n";
+        if (!XBool(c, "showValue")) o << "        " << n << ".ShowValue = false;\n";
+        if (!XBool(c, "valueInHub")) o << "        " << n << ".ValueInHub = false;\n";
+        if (XSet(c, "valuePointer")) o << "        " << n << ".ValuePointer = " << XInt(c, "valuePointer") << ";\n";
+        if (XSet(c, "faceColor")) o << "        " << n << ".ColFace = " << HexColor((uint16_t)XInt(c, "faceColor")) << ";\n";
+        if (XSet(c, "rimColor")) o << "        " << n << ".ColRim = " << HexColor((uint16_t)XInt(c, "rimColor")) << ";\n";
+        if (XSet(c, "tickColor")) o << "        " << n << ".ColTick = " << HexColor((uint16_t)XInt(c, "tickColor")) << ";\n";
+        if (XSet(c, "hubColor")) o << "        " << n << ".ColHub = " << HexColor((uint16_t)XInt(c, "hubColor")) << ";\n";
+        if (XSet(c, "zoneThick")) o << "        " << n << ".ZoneThickness = " << XInt(c, "zoneThick") << ";\n";
+        for (const GaugeZone& z : c.zones) o << "        " << n << ".AddZone(" << FloatLit(z.from) << ", " << FloatLit(z.to) << ", " << HexColor(z.color) << ");\n";
+        static const char* st[] = { "POINTER_TAPER", "POINTER_LINE", "POINTER_TAIL" };
+        const int np = (int)XInt(c, "pointers");
+        for (int i = 1; i <= np; ++i) {                                                                           // AddPointer(length, width, colour, style, onCard): pointer 0 is P1
+            const std::string k = "p" + std::to_string(i);
+            o << "        " << n << ".AddPointer(" << FloatLit(XFloat(c, (k + "Length").c_str())) << ", " << XInt(c, (k + "Width").c_str()) << ", " << HexColor((uint16_t)XInt(c, (k + "Color").c_str()))
+              << ", SuperDial::" << st[XInt(c, (k + "Style").c_str())] << (XBool(c, (k + "Face").c_str()) ? ", true" : "") << ");\n";
+        }
+        if (!XBool(c, "smoothing")) o << "        " << n << ".SetSmoothing(false);\n";
+        else if (XSet(c, "smoothMs")) o << "        " << n << ".SetSmoothing(true, " << XInt(c, "smoothMs") << ");\n";
+        for (int i = 1; i <= np; ++i) if (XFloat(c, ("p" + std::to_string(i) + "Value").c_str()) != (wrap ? 0.0 : XFloat(c, "min")))
+            o << "        " << n << ".SetPointerValue(" << i - 1 << ", " << FloatLit(XFloat(c, ("p" + std::to_string(i) + "Value").c_str())) << ");\n";       // last: the scale is in place
+        if (XFloat(c, "faceRotation") != 0.0) o << "        " << n << ".SetFaceRotation(" << FloatLit(XFloat(c, "faceRotation")) << ");\n";
     }
     if (c.type == C_GRAPH) {
         if (XSet(c, "capacity")) o << "        " << n << ".SetCapacity(" << XInt(c, "capacity") << ");\n";
@@ -269,14 +314,14 @@ inline std::string GenerateDesigner(const DForm& f) {
     o << "    SuperForm Form;\n\n";
 
     // constructor: every control is built with its position, width and font
-    o << "    " << base << "(lgfx::LovyanGFX* dst, SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB)";
+    o << "    " << base << "(lgfx::LovyanGFX* dst, SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB, SuperTouch* touch = nullptr)";
     bool first = true;
     auto sep = [&]() { o << (first ? "\n        : " : ",\n          "); first = false; };
     for (const DControl& c : f.items) {
         sep();
         const std::string fontArg = std::string("&lgfx::fonts::") + FindFont(c.font).id;
         if (c.type == C_RICHTEXT) { o << c.name << "(dst, " << c.x << ", " << c.y << ", " << c.w << ", " << XInt(c, "bodyHeight") << ", " << fontArg << ", enc, btnA, btnB)"; continue; }       // (dst, x, y, w, bodyHeight, font, enc, btnA, btnB)
-        if (c.type == C_GAUGE || c.type == C_USERDRAW) { o << c.name << "(dst, " << c.x << ", " << c.y << ", " << c.w << ", " << XInt(c, "bodyHeight") << ", " << fontArg << ")"; continue; }       // (dst, x, y, w, bodyHeight, font)
+        if (c.type == C_GAUGE || c.type == C_DIAL || c.type == C_USERDRAW) { o << c.name << "(dst, " << c.x << ", " << c.y << ", " << c.w << ", " << XInt(c, "bodyHeight") << ", " << fontArg << ")"; continue; }       // (dst, x, y, w, bodyHeight, font)
         if (c.type == C_GRAPH) { o << c.name << "(dst, " << c.x << ", " << c.y << ", " << c.w << ", " << fontArg << ", " << XInt(c, "bodyHeight") << ")"; continue; }                        // (dst, x, y, w, font, bodyHeight)
         o << c.name << "(dst, " << c.x << ", " << c.y << ", " << c.w << ", " << fontArg;
         if (Info(c.type).ctorText) o << ", " << CppString(c.text);
@@ -289,7 +334,7 @@ inline std::string GenerateDesigner(const DForm& f) {
     }
     for (const DMessageBox& b : f.boxes) { sep(); o << b.name << "(dst, " << b.w << ", &lgfx::fonts::" << FindFont(b.font).id << ", enc, btnA, btnB)"; }
     sep(); o << "Form(enc, btnA)"; sep(); o << "Dst(dst)";
-    o << " {\n        InitializeComponent();\n";
+    o << " {\n        if (touch) Form.SetTouch(touch);                  // optional touch screen: the form takes taps, drags and long presses\n        InitializeComponent();\n";
     for (const DControl& c : f.items) if (HasPages(c)) o << "        " << c.name << "_ShowPage(" << c.name << ".GetSelected(), false);       // the first tab's page is shown, the others are hidden\n";
     for (const DControl& c : f.items) if (!c.visible) o << "        " << c.name << ".SetVisible(false, false);       // Visible = No: hidden at start (after the first page is shown)\n" << (f.keepHidden ? "        " + c.name + ".SetKeepHidden(true);       // ... and a group show leaves it hidden\n" : "");
     o << "    }\n    virtual ~" << base << "() {}\n\n";
@@ -346,6 +391,7 @@ inline std::string GenerateDesigner(const DForm& f) {
         EmitLabel(o, c);
         EmitExtras(o, c);
         for (const EventDef& ev : EventsOf(c)) o << "        " << n << "." << ev.setter << "(" << n << "_" << ev.name << "Thunk, this);\n";
+        if (XBool(c, "beforeDraw") && XSet(c, "pollMs")) o << "        " << n << ".SetPollMs(" << XInt(c, "pollMs") << ");\n";
         if (c.type == C_RADIO) o << "        " << c.group << ".Add(&" << n << ");\n";
         o << "        Form.Add(&" << n << (Focusable(c) ? "" : ", false") << ");\n";
     }
@@ -398,11 +444,12 @@ inline std::string GenerateUserFile(const DForm& f) {
       << "//\n// In your sketch:\n"
       << "//     #include \"" << UserFileName(f) << "\"\n"
       << "//     " << f.name << " ui(&lcd, &Enc, &BtnA, &BtnB);   // lcd: your display; Enc, BtnA, BtnB: your encoder and two buttons\n"
+      << "//     (touch screen: add a SuperTouch as the last argument, " << f.name << " ui(&lcd, &Enc, &BtnA, &BtnB, &touch);)\n"
       << "//     setup():  ui.Show();                          // draws the form\n"
       << "//     loop():   ui.Service();                       // focus, editing and the handlers below\n"
       << "#pragma once\n#include \"" << DesignerFileName(f) << "\"\n\n"
       << "class " << f.name << " : public " << base << " {\npublic:\n"
-      << "    " << f.name << "(lgfx::LovyanGFX* dst, SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB) : " << base << "(dst, enc, btnA, btnB) {\n"
+      << "    " << f.name << "(lgfx::LovyanGFX* dst, SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB, SuperTouch* touch = nullptr) : " << base << "(dst, enc, btnA, btnB, touch) {\n"
       << "        // Your start-up code: set initial values, e.g. " << (f.items.empty() ? "someControl.ColFg = 0xFFE0" : f.items[0].name + ".ColFg = 0xFFE0") << ".\n    }\n";
     auto h = HandlerNames(f);
     if (!h.empty()) {
@@ -451,30 +498,26 @@ inline GenResult WriteDesigner(DForm& f, const std::string& dir) {
     f.outDir = dir; r.ok = true; return r;
 }
 
-struct UserResult { bool ok = false, created = false; std::string path, error, backup; std::vector<std::string> missing; };
+struct UserResult { bool ok = false, created = false; std::string path, error, alt; std::vector<std::string> missing; };
 
-// Writes <dir>/<FormName>.h. An existing file is first copied to <Form>.yyyy_mm_dd_hh_mm_ss.h.txt (`backup`) and then replaced; if the copy fails
-// the file is left alone and the export reports an error.
+// Writes <dir>/<FormName>.h. An existing file is never touched: the new code goes to <Form>.yyyy_mm_dd_hh_mm_ss.h next to it
+// (`alt` and `path` name that file) and the user merges what they want.
 inline UserResult WriteUserFile(const DForm& f, const std::string& dir) {
     namespace fs = std::filesystem;
     UserResult r; std::error_code ec;
     if (dir.empty() || !fs::is_directory(dir, ec)) { r.error = "folder \"" + dir + "\" does not exist"; return r; }
     fs::path p = fs::path(dir) / UserFileName(f);
-    r.path = p.string();
     if (fs::exists(p, ec)) {
         if (!fs::is_regular_file(p, ec)) { r.error = p.string() + " is not a file"; return r; }
-        // the existing file is first copied next to itself: <Form>.yyyy_mm_dd_hh_mm_ss.h.txt (a .txt so nothing ever includes it); it is only replaced when that copy succeeded
         std::time_t now = std::time(nullptr); char stamp[32]; std::strftime(stamp, sizeof stamp, "%Y_%m_%d_%H_%M_%S", std::localtime(&now));
-        std::string stem = p.stem().string(), ext = p.extension().string();                                  // Form1 + .h
-        fs::path bk = fs::path(dir) / (stem + "." + stamp + ext + ".txt");
-        std::error_code cec; fs::copy_file(p, bk, fs::copy_options::overwrite_existing, cec);
-        if (cec) { r.error = "cannot back up " + p.string() + " (not replaced)"; return r; }
-        r.backup = bk.string();
+        p = fs::path(dir) / (f.name + "." + stamp + ".h");
+        r.alt = p.string();
     }
+    r.path = p.string();
     fs::path tmp = p; tmp += ".tmp";
     { std::ofstream out(tmp, std::ios::binary | std::ios::trunc); if (!out) { r.error = "cannot write " + tmp.string(); return r; } out << GenerateUserFile(f); if (!out) { r.error = "write failed: " + tmp.string(); return r; } }
     fs::rename(tmp, p, ec);
     if (ec) { fs::remove(tmp, ec); r.error = "cannot create " + p.string(); return r; }
-    r.ok = true; r.created = r.backup.empty(); return r;
+    r.ok = true; r.created = r.alt.empty(); return r;
 }
 }

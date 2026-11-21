@@ -6,6 +6,8 @@
 //  * ShowRange prints the top / bottom values; ShowGrid draws three faint horizontal lines.
 //  * Memory: capacity * 4 bytes for the samples, plus the sprite.
 //  * Not editable (StartEdit() returns false).
+//  * BeforeDraw (optional, pull model): SetOnBeforeDraw(fn, user) + SetPollMs(ms): your function is called from Tick() / Update() every ms milliseconds
+//    (0 = every service pass, first call at once) and calls AddSample(); nothing is drawn while it runs and the graph redraws once if it added any.
 #include "SuperControl.h"
 
 class SuperGraph : public SuperControl {
@@ -24,6 +26,7 @@ public:
     void SetRange(float lo, float hi) { Lo = lo; Hi = hi > lo ? hi : lo + 1; Auto = false; Dirty = true; }
     void SetAutoRange() { Auto = true; Dirty = true; }
     void Clear() { Head = Count = 0; Dirty = true; Refresh(); }
+
     int  GetCount() const { return Count; }
 
     // redraw=false lets you add several samples and call Refresh() once.
@@ -58,8 +61,8 @@ protected:
         if (ShowRange) {
             char s[24];
             Spr.setFont(Font); Spr.setTextColor(ColFg);
-            Spr.setTextDatum(lgfx::textdatum_t::top_left);     snprintf(s, sizeof s, "%g", hi); Spr.drawString(s, x + 1, y);
-            Spr.setTextDatum(lgfx::textdatum_t::bottom_left);  snprintf(s, sizeof s, "%g", lo); Spr.drawString(s, x + 1, y + h);
+            Spr.setTextDatum(lgfx::textdatum_t::top_left);     snprintf(s, sizeof s, "%g", (double)hi); Spr.drawString(s, x + 1, y);
+            Spr.setTextDatum(lgfx::textdatum_t::bottom_left);  snprintf(s, sizeof s, "%g", (double)lo); Spr.drawString(s, x + 1, y + h);
         }
     }
 

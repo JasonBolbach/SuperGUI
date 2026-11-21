@@ -24,7 +24,7 @@ public:
     uint16_t ColLiteral = 0xBDF7;          // separators
     bool     TouchAcceptOnLift = true;
 
-    void SetAbort(bool (*fn)()) { IO.Abort = fn; }
+    void SetAbort(bool (*fn)()) override { IO.Abort = fn; }
     void SetOnChange(void (*fn)(void*), void* user = nullptr) { IO.OnChange = fn; IO.OnChangeUser = user; }
     void SetOnAccept(void (*fn)(void*), void* user = nullptr) { IO.OnAccept = fn; IO.OnAcceptUser = user; }
     void SetWrap(bool w) { Wrap = w; }                 // true: a field goes round (59 -> 00) instead of stopping at its limit

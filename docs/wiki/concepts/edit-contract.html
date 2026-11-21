@@ -48,6 +48,7 @@
 <a class="item" href="../controls/progressbar.html">SuperProgressBar</a>
 <a class="item" href="../controls/graph.html">SuperGraph</a>
 <a class="item" href="../controls/gauge.html">SuperGauge</a>
+<a class="item" href="../controls/dial.html">SuperDial</a>
 <a class="item" href="../controls/richtext.html">SuperRichText</a>
 <h4>Custom</h4>
 <a class="item" href="../controls/userdraw.html">SuperUserDraw</a>
@@ -59,7 +60,7 @@
 <tr><td><code>BeginEdit()</code></td><td>Blocking wrapper. False if disabled/hidden; true only if accepted.</td></tr>
 <tr><td><code>SetOnChange(fn,user)</code></td><td>The value being edited changed (live). List / combo / tabs / menu: the cursor moved.</td></tr>
 <tr><td><code>SetOnAccept(fn,user)</code></td><td>Accepted. The stored value is already the new one.</td></tr>
-<tr><td><code>SetAbort(fn)</code></td><td>Polled in <code>Service()</code>; returning true cancels (desktop: <code>Quitting()</code>).</td></tr></table>
+<tr><td><code>SetAbort(fn)</code></td><td>Polled in <code>Service()</code>; returning true cancels (desktop: <code>Quitting()</code>). <code>Form.SetAbort(fn)</code> sets it on every control at once.</td></tr></table>
 <div class="flow"><span>StartEdit()</span><i>&rarr;</i><span>Service() = EDIT_ACTIVE ...</span><i>&rarr;</i><span>EDIT_ACCEPTED or EDIT_CANCELLED (once)</span><i>&rarr;</i><span>EDIT_IDLE</span></div>
 <h2>The rule that matters most</h2>
 <div class="box note"><b class="h">Stored values change only on accept</b><p>While editing, the control works on a copy. <code>GetValue()</code> keeps returning the old value until the user accepts. Cancel (B short) throws the copy away; B long reverts the copy to the start and keeps editing.</p></div>

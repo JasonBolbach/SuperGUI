@@ -63,7 +63,7 @@ type is mostly a table entry plus its generator lines. Only values that differ f
 position Above / Below, alignment, font, colour; with the Sleek border style the label sits on the frame line). The property panel scrolls (wheel) when a control has many rows.
 Spin box: Value, Minimum, Maximum, Step, Decimals (a decimal point is only added when drawing: the numbers stay integers), Wrap around, Prefix, Suffix. Slider: Value, Minimum, Maximum, Step,
 Show value. Both raise **`<name>_Change()`** (live, while being edited: `GetLiveValue()`) and **`<name>_Accept()`** (`GetValue()`). Because editable controls need both buttons, the generated
-constructor is now `Form1(dst, enc, btnA, btnB)` (it was `(dst, enc, btnA)` before chunk 1: re-export and pass `&BtnB`). **Check box and radio button** have no label group (their own caption is enough, and so does the push button) and an initial state: **Checked** / **Selected** (Yes / No), set silently in the generated
+constructor is now `Form1(dst, enc, btnA, btnB)` (it was `(dst, enc, btnA)` before chunk 1: re-export and pass `&BtnB`). The constructor also takes an optional last argument `SuperTouch* touch = nullptr`, passed to the form with `Form.SetTouch()` (touch screens: `Form1(dst, enc, btnA, btnB, &touch)`; an older `Form1.h` needs the argument added by hand). **Check box and radio button** have no label group (their own caption is enough, and so does the push button) and an initial state: **Checked** / **Selected** (Yes / No), set silently in the generated
 code with `SetChecked(true)` (no event). Only one radio button per group can be selected: choosing Yes deselects the others of the group, a selected button that joins a group that already has a
 selection does not take it over, and a file with two selected buttons in one group keeps the first.
 
@@ -116,7 +116,11 @@ of another group from the list switches the view; initially hidden controls are 
 
 **Chunk 4: display controls.** **Gauge**, **Graph** and **User draw** (not editable: no encoder, no buttons; each has a **Body height**: the height of the picture inside the frame). New: **decimal numbers**
 (property kind `PK_FLOAT`, typed with a decimal point, saved as JSON numbers like `55.5`, written in code as `55.5f`).
-*Gauge:* Minimum / Maximum / Value (decimals), Sweep start / end in degrees (-90..90 half dial, -135..135 a 270 degree dial), Major / Minor ticks, Tick numbers, Decimals + Unit, Show value, Needle (Taper / Line),
+*Dial:* a round face with up to three pointers. The **Preset** row (Gauge, Compass, Clock, Tachometer) fills in the whole face: scale (Sweep / Wrap), Minimum / Maximum, Start / End angle, ticks, Labels (comma separated, e.g. `N,NE,E,SE,S,SW,W,NW`), zones (the Zones dialog, as for a gauge) and the pointers. The **Pointers** row (0-3) shows a P1 / P2 / P3 group each: value, length (a fraction), width, colour, style (Taper / Line / Tail) and *on card* (turns with the face). Also Face rotation (the starting angle), Value in hub / Value pointer, Smoothing and the face / rim / tick / hub colours. A wrapping scale runs from 0 (Minimum must be 0); there a zone may cross the top (From above To, e.g. 300 to 40). One event, **BeforeDraw** (`<name>_BeforeDraw()`, run every *BeforeDraw (ms)* milliseconds, 0 = every `Service()`; set the values in it, nothing is drawn meanwhile). Your code moves it with `SetPointerValue()`, `SetTime()`, `SetHeading()`, `SetFaceRotation()`.
+
+*BeforeDraw (every control):* a **BeforeDraw** Yes/No row (off by default) and, when on, a **BeforeDraw (ms)** row. It generates and connects `<name>_BeforeDraw()`: the control calls it every that many milliseconds (0 = every `Service()`, not while the user edits it) so your code can set its values (`gg1.SetValue(v)`, `lbl1.SetText("...")`, `grf1.AddSample(v)`); nothing is drawn while it runs and the control redraws only if something changed.
+
+*Gauge:* Minimum / Maximum / Value (decimals), Sweep start / end in degrees (-90..90 half dial, -135..135 a 270 degree dial), Major / Minor ticks, Tick numbers, Decimals + Unit, Show value, Value in hub (Yes = the value in a box over the hub, No = under the dial), Needle (Taper / Line),
 Zone needle, Smoothing (+ ms), Track / Tick / Needle colours, Min/Max window (ms, 0 = off) with minimum degrees and thickness, and the **Zones**: coloured bands on the dial, edited in a **zones dialog** (list of
 From / To / Color with a palette strip, Add / Delete / Move / **Fill 3 bands** (green / yellow / red over 60 / 85 / 100 % of the range) / Clear all, live preview of the real gauge). Strict: a zone must end above where it starts,
 Maximum above Minimum, the sweep must end after it starts, and a Value outside the range is refused; a new Minimum / Maximum moves the needle into the range. A new gauge starts with the three bands and the value 42.
@@ -148,8 +152,8 @@ A button may have an optional name (`itemId`): it becomes `static constexpr int 
 `int msgDelete_Ask()` (blocking: the chosen button's index, or `MSG_CANCELLED`) and the non-blocking `msgDelete_Open()` / `msgDelete_Poll()` (`MSG_PENDING` while open). After a box closes the form is redrawn
 over the area it covered (generated restore thunk). Library: `SuperMessageBox::EditIO()`. Export refuses unsafe or clashing box and button names.
 
-**Help, backups and rich text.** Press **?** (or F1) for a keyboard help window (a `SuperRichText`; `src/HelpDialog.h`). Every Export of an existing user file also copies it to
-`<Form>.yyyy_mm_dd_hh_mm_ss.h.txt` next to it. New control type **Rich text** (`SuperRichText`: scrollable text with basic HTML-like tags, see `src/SuperRichCore.h`): its Text row opens the
+**Help, backups and rich text.** Press **?** (or F1) for a keyboard help window (a `SuperRichText`; `src/HelpDialog.h`). Export never touches an existing user file: the new code is written next to it as
+`<Form>.yyyy_mm_dd_hh_mm_ss.h`. New control type **Rich text** (`SuperRichText`: scrollable text with basic HTML-like tags, see `src/SuperRichCore.h`): its Text row opens the
 **rich text editor** (`src/RichTextEditor.h`): Source mode edits the markup in a multi-line field (`src/DesignerRichTextField.h`, which extends `TextField`: lines, Up / Down keep the column, Home / End, Enter),
 Rendered mode shows the real control; Ctrl/Cmd+R switches, Ctrl/Cmd+Enter = OK. JSON: `"richText": ["line", ...]`; generated: `SetTextStatic("..." "...")` (a literal in flash). Library: `SuperRichText`, and
 `SetRich(true)` on `SuperLabel` and `SuperMessageBox` (off by default).
@@ -182,7 +186,7 @@ Lists and menus snap to **whole rows** (the height is `rows`), rich text to whol
 same value as *Visible rows* / *Body height* (nothing new is saved). Dragging stops at the form's edges. The other controls' height follows their font, so they have no height handles.
 
 **Default names.** A new control is named `<prefix><number>` with the smallest number that is free (and a safe C++ name): Label `lbl`, Push Button `cmd`, Check Box `ck`, Radio Button `rb`, Progress Bar `pb`, Spin Box `sp`,
-Slider `sld`, Text Box `txt`, Input Box `inp`, Time Box `tm`, Date Box `dt`, List Box `lb`, Combo Box `cb`, Tab Bar `tab`, Menu `mnu`, Gauge `gg`, Graph `grf`, User Draw `ud`, Color Picker `cp`, Rich Text `rtb` (so `cmd1`, `cmd2`, `lbl1` ...;
+Slider `sld`, Text Box `txt`, Input Box `inp`, Time Box `tm`, Date Box `dt`, List Box `lb`, Combo Box `cb`, Tab Bar `tab`, Menu `mnu`, Gauge `gg`, Dial `dl`, Graph `grf`, User Draw `ud`, Color Picker `cp`, Rich Text `rtb` (so `cmd1`, `cmd2`, `lbl1` ...;
 the table is `Info()` in `src/FormModel.h`). A radio group defaults to `rGrp1`, `rGrp2` ...; the Control group row and the tab bar's Page group field show `cGrp1`, `cGrp2` ... as the next free name (a hint: you type the name you want). Message boxes keep `msg1` / `msgYesNo`.
 Existing forms keep their names.
 

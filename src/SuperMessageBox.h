@@ -28,7 +28,7 @@ public:
     { SetBorder(2, ColBorder); SetPadding(6); }
 
     SuperEditIO* EditIO() { return &IO; }                          // the input plumbing: InjectDelta / Inject for keyboards, mice and tests
-    void SetAbort(bool (*fn)()) { IO.Abort = fn; }
+    void SetAbort(bool (*fn)()) override { IO.Abort = fn; }
     void SetOnChange(void (*fn)(void*), void* user = nullptr) { IO.OnChange = fn; IO.OnChangeUser = user; }
     void SetOnAccept(void (*fn)(void*), void* user = nullptr) { IO.OnAccept = fn; IO.OnAcceptUser = user; }
     void SetRestore(void (*fn)(void*), void* user = nullptr) { RestoreFn = fn; RestoreUser = user; }

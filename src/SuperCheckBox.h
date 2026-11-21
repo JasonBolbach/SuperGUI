@@ -30,9 +30,9 @@ public:
     bool Toggle() { Activate(); return true; }
 
     // ---- "editing" (instant) ----
-    bool IsEditing() const { return false; }
-    bool StartEdit() { Activate(); Pending = true; return true; }
-    SuperEditState Service() { if (Pending) { Pending = false; return EDIT_ACCEPTED; } return EDIT_IDLE; }
+    bool IsEditing() const override { return false; }
+    bool StartEdit() override { Activate(); Pending = true; return true; }
+    SuperEditState Service() override { if (Pending) { Pending = false; return EDIT_ACCEPTED; } return EDIT_IDLE; }
 
 protected:
     bool Checked = false;

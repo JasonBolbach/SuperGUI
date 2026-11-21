@@ -39,6 +39,9 @@ SuperButton  BtnA(4, true), BtnB(5, true);   // active low
 
 SuperGraph graph(&lcd, 10, 10, 220, &lgfx::fonts::Font2, 100);
 
+// BeforeDraw: the graph asks for its next sample every 40 ms and redraws once (nothing is drawn inside the function).
+void nextSample(void*) { static int n = 0; graph.AddSample(sin(n++ * 0.15f) * 10); }       // one sample per pixel scrolls the line
+
 void setup() {
   Serial.begin(115200);
   lcd.init();
@@ -47,10 +50,9 @@ void setup() {
   graph.SetLabel("Signal");
   graph.SetBorder(1, TFT_WHITE);
   graph.ShowRange = true;
+  graph.SetOnBeforeDraw(nextSample);  graph.SetPollMs(40);
 }
 
 void loop() {
-  static int n = 0;
-  graph.AddSample(sin(n++ * 0.15f) * 10);                      // one sample per pixel scrolls the line
-  delay(40);
+  graph.Update();                                                // runs the BeforeDraw function when it is due (a SuperForm does this in form.Service())
 }

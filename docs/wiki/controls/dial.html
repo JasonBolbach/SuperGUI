@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SuperDial - SuperGUI wiki</title><link rel="stylesheet" href="../assets/wiki.css"></head>
+<body><nav class="side">
+<a class="brand" href="../index.html">SuperGUI wiki</a>
+<input id="navfilter" placeholder="Filter pages..." autocomplete="off">
+<h4>Concepts</h4>
+<a class="item" href="../concepts/getting-started.html">Getting started</a>
+<a class="item" href="../concepts/architecture.html">Architecture and class map</a>
+<a class="item" href="../concepts/edit-contract.html">The edit contract</a>
+<a class="item" href="../concepts/input.html">Input: encoder and buttons</a>
+<a class="item" href="../concepts/touch.html">Touch</a>
+<a class="item" href="../concepts/events.html">Events and workflow</a>
+<a class="item" href="../concepts/form.html">SuperForm: focus and screens</a>
+<a class="item" href="../concepts/theming.html">Themes and styles</a>
+<a class="item" href="../concepts/memory-performance.html">Memory and performance</a>
+<a class="item" href="../concepts/pitfalls.html">Pitfalls and fixes</a>
+<a class="item" href="../concepts/new-control.html">Writing your own control</a>
+<h4>Form Designer</h4>
+<a class="item" href="../designer/designer-start.html">Form Designer: your first form</a>
+<a class="item" href="../designer/designer-usage.html">Using the designer</a>
+<a class="item" href="../designer/designer-code.html">Generated code and your file</a>
+<a class="item" href="../designer/designer-groups.html">Lists, menus, tab pages and groups</a>
+<a class="item" href="../designer/designer-boxes.html">Message boxes</a>
+<a class="item" href="../designer/designer-json.html">The form file (JSON)</a>
+<a class="item" href="../designer/designer-tips.html">Designer tips, tricks and pitfalls</a>
+<h4>Text and numbers</h4>
+<a class="item" href="../controls/label.html">SuperLabel</a>
+<a class="item" href="../controls/textbox.html">SuperTextBox</a>
+<a class="item" href="../controls/inputbox.html">SuperInputBox</a>
+<a class="item" href="../controls/spinbox.html">SuperSpinBox</a>
+<a class="item" href="../controls/timebox.html">SuperTimeBox</a>
+<a class="item" href="../controls/datebox.html">SuperDateBox</a>
+<a class="item" href="../controls/slider.html">SuperSlider</a>
+<h4>Choosing</h4>
+<a class="item" href="../controls/listbox.html">SuperListBox</a>
+<a class="item" href="../controls/combobox.html">SuperComboBox</a>
+<a class="item" href="../controls/menu.html">SuperMenu</a>
+<a class="item" href="../controls/tabbar.html">SuperTabBar</a>
+<a class="item" href="../controls/colorpicker.html">SuperColorPicker</a>
+<h4>Buttons</h4>
+<a class="item" href="../controls/checkbox.html">SuperCheckBox</a>
+<a class="item" href="../controls/radiobutton.html">SuperRadioButton</a>
+<a class="item" href="../controls/pushbutton.html">SuperPushButton</a>
+<h4>Dialogs</h4>
+<a class="item" href="../controls/messagebox.html">SuperMessageBox</a>
+<h4>Display only</h4>
+<a class="item" href="../controls/progressbar.html">SuperProgressBar</a>
+<a class="item" href="../controls/graph.html">SuperGraph</a>
+<a class="item" href="../controls/gauge.html">SuperGauge</a>
+<a class="item cur" href="../controls/dial.html">SuperDial</a>
+<a class="item" href="../controls/richtext.html">SuperRichText</a>
+<h4>Custom</h4>
+<a class="item" href="../controls/userdraw.html">SuperUserDraw</a>
+</nav><main>
+<h1>SuperDial</h1>
+<p class="tag">A display-only round face with any number of pointers, a scale that sweeps or wraps, custom tick labels, a zone ring and a face that can turn. A clock, a compass with a turning card and a circular gauge are the same control with different settings.</p>
+<div class="badges"><span>Display only</span><span>src/SuperDial.h</span></div>
+<h2>Quick start</h2><pre><code>SuperDial clockFace(&amp;lcd, 5, 5, 150, 150, &amp;lgfx::fonts::Font2);
+clockFace.MakeClock();                       // 12 hour face, three pointers (hours, minutes, seconds)
+SuperDial compass(&amp;lcd, 165, 5, 150, 150, &amp;lgfx::fonts::Font2);
+compass.MakeCompass();                   // N E S W card, a red pointer at the top
+SuperDial tacho(&amp;lcd, 5, 175, 200, 140, &amp;lgfx::fonts::Font2);
+tacho.SetSweep(0, 8, -135, 135);         // 0..8 over 270 degrees
+tacho.AddZone(6, 8, TFT_RED);
+tacho.AddPointer();
+form.Add(&amp;clockFace, false); form.Add(&amp;compass, false); form.Add(&amp;tacho, false);
+clockFace.SetTime(10, 8, 30);                // from your own clock
+compass.SetHeading(40);                  // the card turns, the pointer stays at the top
+tacho.SetPointerValue(0, 5.5f);</code></pre>
+<h2>Unique features</h2><ul><li><b>Scale.</b> <code>SetSweep(min, max, startDeg, endDeg)</code> maps a value range onto an arc (values are clamped). <code>SetWrap(range)</code> maps 0..range onto the whole circle and the values wrap: 359 to 1 goes through 0, not back through 180.</li><li><b>Pointers.</b> <code>AddPointer(length, width, colour, style, onCard)</code> returns the index; <code>SetPointerValue(i, v)</code> moves it. Styles: <code>POINTER_TAPER</code>, <code>POINTER_LINE</code>, <code>POINTER_TAIL</code> (with a short tail behind the hub). Later pointers are drawn on top.</li><li><b>Face.</b> Rim, zone ring (<code>AddZone</code>, <code>ZoneThickness</code>), ticks and labels. <code>SetFaceRotation(deg)</code> turns the ticks, zones and labels; the labels move but stay upright. A pointer added with <code>onCard = true</code> turns with the face (a bearing on a compass card).</li><li><b>Labels.</b> <code>SetTickLabels({"N","NE",...})</code> replaces the numbers at the major ticks (an empty string leaves a tick bare). A wrap scale shows the range's end at the top (12, not 0).</li><li><b>Hub.</b> <code>ShowValue</code> writes the value of pointer <code>ValuePointer</code> (default 0) in a box over the hub (<code>ValueInHub</code>), with <code>SetFormat(decimals, unit)</code> or <code>SetHubText()</code>.</li><li><b>Presets.</b> <code>MakeClock()</code> + <code>SetTime(h, m, s)</code> and <code>MakeCompass()</code> + <code>SetHeading(deg)</code> set up those two faces.</li><li>Smoothing is on by default: pointers and the face glide (the short way round on a wrap scale). All the maths is single precision; the face's sines and cosines are worked out once per tick set and rotated per frame.</li></ul>
+<h2>GUI workflow</h2><p>Display only: nothing to operate. The user sees the pointers glide to new values and the card turn.</p>
+<h2>Event workflow</h2><p><b>BeforeDraw</b> (a pull event): <code>SetOnBeforeDraw(fn, user)</code> and <code>SetPollMs(ms)</code>. Your function is called from <code>Tick()</code> every <code>ms</code> milliseconds (0 = on every service pass; the first call is at once). Put the code that reads the clock or sensor in it and call <code>SetPointerValue()</code>, <code>SetTime()</code>, <code>SetHeading()</code>, <code>SetFaceRotation()</code>, <code>SetHubText()</code> or set <code>ValuePointer</code>. Nothing is drawn while it runs and the dial redraws only if something changed, so setting the same values again is free. You can also feed the dial from <code>loop()</code> instead. Animation is driven by <code>SuperControl::Tick()</code> from <code>SuperForm::Service()</code>; without a form call <code>Update()</code> from <code>loop()</code>.</p>
+<h2>Main API</h2><table><tr><th>Call</th><th>What it does</th></tr><tr><td><code>SetSweep(min,max,startDeg,endDeg)</code></td><td>Arc scale</td></tr><tr><td><code>SetWrap(range, startDeg)</code></td><td>Whole-circle scale that wraps</td></tr><tr><td><code>SetTicks(major,minor)</code></td><td>Tick marks</td></tr><tr><td><code>SetTickLabels(list)</code></td><td>Custom labels</td></tr><tr><td><code>AddPointer(...)</code></td><td>Add a pointer, returns its index</td></tr><tr><td><code>SetPointerValue(i,v)</code></td><td>Move a pointer</td></tr><tr><td><code>SetFaceRotation(deg)</code></td><td>Turn the face</td></tr><tr><td><code>AddZone(from,to,colour)</code></td><td>Coloured band on the zone ring</td></tr><tr><td><code>SetFormat(decimals, unit)</code></td><td>Hub value text</td></tr><tr><td><code>MakeClock() / SetTime(h,m,s)</code></td><td>12 hour clock</td></tr><tr><td><code>MakeCompass() / SetHeading(deg)</code></td><td>Compass card</td></tr><tr><td><code>SetOnBeforeDraw(fn,user) / SetPollMs(ms)</code></td><td>Callback that sets the values</td></tr><tr><td><code>SetSmoothing(bool)</code></td><td>Glide on / off</td></tr></table>
+<h2>Tips and tricks</h2><div class="box tip"><b class="h">Tip</b>Compass: keep the pointer at the top and turn the card with <code>SetHeading()</code>; that is how a real compass card reads.</div><div class="box tip"><b class="h">Tip</b>Clock: turn smoothing off for a ticking second hand, leave it on for a sweeping one.</div>
+<h2>Pitfalls</h2><div class="box warn"><b class="h">Watch out</b>A zone that crosses the top of a wrapping scale has <code>from</code> greater than <code>to</code> (300 to 40); only a wrapping scale allows it.</div><div class="box warn"><b class="h">Watch out</b>A rotated face costs a redraw of every tick and label: on a slow display keep the dial small or feed it at a modest rate.</div>
+<h2>See also</h2><p><a href="gauge.html">SuperGauge</a> &middot; <a href="graph.html">SuperGraph</a></p>
+<div class="pn"><span>&larr; <a href="../controls/gauge.html">SuperGauge</a></span><span><a href="../controls/richtext.html">SuperRichText</a> &rarr;</span></div>
+</main><script src="../assets/wiki.js"></script></body></html>

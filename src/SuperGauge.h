@@ -15,7 +15,7 @@
 //    number when there is room (ShowTickLabels).
 //  * Zones: AddZone(from, to, colour) paints coloured bands along the dial (the plain track shows where there is no zone). With
 //    NeedleByZone (default) the needle and hub take the colour of the zone the value is in.
-//  * Needle: NEEDLE_TAPER (default) or NEEDLE_LINE. ShowValue (default) prints the value under the hub, in the control's font.
+//  * Needle: NEEDLE_TAPER (default) or NEEDLE_LINE. ShowValue (default) prints the value in the control's font, in a box over the hub (ValueInHub, default) or under the dial.
 //  * Smoothing (default ON, SetSmoothing(false) to switch it off): SetValue() starts a glide of about SmoothMs milliseconds. It is driven by
 //    SuperControl::Tick(), which SuperForm::Service() calls, and the gauge only redraws while the needle is moving. Without a form call
 //    Update() from loop(). With smoothing off SetValue() jumps and redraws at once.
@@ -24,8 +24,11 @@
 //    minDegrees away from the needle, so nothing clutters the dial while the reading is steady. The lines expire by themselves as old
 //    extremes age out of the window (SuperForm / Update() drive this like the glide). Each line crosses the dial ring, centred on its value,
 //    MinMaxThickness pixels thick, in the INVERTED colour of the dial segment under it (the zone's colour, or the track's) so it always contrasts.
+//  * BeforeDraw (optional, pull model): SetOnBeforeDraw(fn, user) + SetPollMs(ms): your function is called from Tick() / Update() every ms milliseconds
+//    (0 = every service pass, first call at once) and calls SetValue(); nothing is drawn while it runs and the gauge redraws only if something changed.
 //  * It is built from LovyanGFX primitives, so it needs no bitmaps and works with the shared buffer / DMA like every control.
 #include "SuperControl.h"
+#include "SuperDialDraw.h"
 #include <cmath>
 #include <cstdio>
 #include <deque>
@@ -41,6 +44,7 @@ public:
     uint16_t ColNeedle = 0xFFFF;           // needle and hub when there is no zone (or NeedleByZone is off)
     bool     NeedleByZone    = true;       // the needle takes the colour of the zone the value is in
     bool     ShowValue       = true;       // the value as text under the hub
+    bool     ValueInHub      = true;       // the value in a box over the hub (sized for the widest of Min / Max); false = text under the dial
     bool     ShowTickLabels  = true;       // numbers at the major ticks (hidden automatically when the dial is small)
     NeedleStyle Needle       = NEEDLE_TAPER;
     int      SmoothMs        = 250;        // about how long the needle takes to reach a new value
@@ -105,21 +109,29 @@ public:
         if (redraw) Dirty = true;
         return redraw;
     }
-    void Update() { if (Tick()) Refresh(); }
 
 protected:
     int BodyHeight() override { return BodyH; }
 
     void RenderBody(int x, int y, int w, int h) override {
         Spr.setFont(Font);
-        int fh = ShowValue ? FontH() + 2 : 0;                                 // the readout strip at the bottom
+        bool inHub = ShowValue && ValueInHub;
+        int fh = (ShowValue && !inHub) ? FontH() + 2 : 0;                     // the readout strip at the bottom
         int ah = h - fh, m = 2;
         bool half = Start >= -90.f && End <= 90.f;                            // fits in the upper half plane: hub at the bottom
         int cx = x + w / 2, cy, rad, hubR;
+        int boxW = 0, boxH = 0;
+        if (inHub) {                                                          // box sized for the widest text the gauge can show
+            char a[24], b[24]; FormatNumber(Min, a, sizeof a, Decimals); FormatNumber(Max, b, sizeof b, Decimals);
+            std::string ta = std::string(a) + Unit, tb = std::string(b) + Unit;
+            boxW = (int)std::max(Spr.textWidth(ta.c_str()), Spr.textWidth(tb.c_str())) + 8;
+            boxH = FontH() + 4;
+            if (boxW > w * 2 / 3) inHub = false, fh = FontH() + 2, ah = h - fh;   // too wide for this dial: fall back to the strip
+        }
         if (half) {
             rad = std::min(w / 2 - m, ah - m - 6);
             hubR = std::max(3, rad / 12);
-            cy = y + ah - hubR - 2;
+            cy = y + ah - (inHub ? boxH / 2 : hubR) - 2;
             rad = std::min(w / 2 - m, cy - y - m);
         } else {
             rad = std::min(w / 2 - m, ah / 2 - m);
@@ -143,16 +155,18 @@ protected:
         int steps = MajorN * (MinorN + 1);
         for (int i = 0; i <= steps; ++i) {
             bool major = (i % (MinorN + 1)) == 0;
-            float a = Start + (End - Start) * i / steps, t = a * 0.0174533f;
+            float a = Start + (End - Start) * i / steps, t = a * SuperDialDraw::DEG2RAD;
             int r1 = rad - ring - 2, r0 = r1 - (major ? majorLen : minorLen);
-            Spr.drawLine(cx + (int)(std::sin(t) * r0), cy - (int)(std::cos(t) * r0), cx + (int)(std::sin(t) * r1), cy - (int)(std::cos(t) * r1), ColTick);
+            SuperDialDraw::Pt p0 = SuperDialDraw::Polar(cx, cy, (float)r0, a), p1 = SuperDialDraw::Polar(cx, cy, (float)r1, a);
+            Spr.drawLine((int)std::lround(p0.x), (int)std::lround(p0.y), (int)std::lround(p1.x), (int)std::lround(p1.y), ColTick);
             if (major && labels) {
                 float v = Min + (Max - Min) * i / steps;
                 char b[16]; FormatNumber(v, b, sizeof b, std::fabs(Max - Min) < 10 ? 1 : 0);
                 Spr.setFont(TickFont); Spr.setTextColor(ColTick); Spr.setTextDatum(lgfx::textdatum_t::middle_center);
                 int tw = (int)Spr.textWidth(b), th = Spr.fontHeight();
                 int rl = r0 - 3 - (int)(std::fabs(std::sin(t)) * tw / 2 + std::fabs(std::cos(t)) * th / 2);   // keep the number clear of its tick
-                Spr.drawString(b, cx + (int)(std::sin(t) * rl), cy - (int)(std::cos(t) * rl));
+                SuperDialDraw::Pt pl = SuperDialDraw::Polar(cx, cy, (float)rl, a);
+                Spr.drawString(b, (int)std::lround(pl.x), (int)std::lround(pl.y));
                 Spr.setFont(Font);
             }
         }
@@ -167,9 +181,9 @@ protected:
                 float a = Angle(v);
                 if (std::fabs(a - na) < MinMaxDeg) return;
                 uint16_t c = (uint16_t)~SegmentColour(v);
-                float t = a * 0.0174533f, s = std::sin(t), co = std::cos(t);
-                float r0 = (float)(rad - ring), r1 = (float)rad;
-                float x0 = cx + s * r0, y0 = cy - co * r0, x1 = cx + s * r1, y1 = cy - co * r1;
+                float t = a * SuperDialDraw::DEG2RAD, s = std::sin(t), co = std::cos(t);        // (s, co): the sideways direction below
+                SuperDialDraw::Pt q0 = SuperDialDraw::Polar(cx, cy, (float)(rad - ring), a), q1 = SuperDialDraw::Polar(cx, cy, (float)rad, a);
+                float x0 = q0.x, y0 = q0.y, x1 = q1.x, y1 = q1.y;
                 if (MinMaxThickness <= 1) { Spr.drawLine((int)std::lround(x0), (int)std::lround(y0), (int)std::lround(x1), (int)std::lround(y1), c); return; }
                 float half = (MinMaxThickness - 1) * 0.5f, px = co * half, py = s * half;   // sideways (perpendicular to the radius), so the line is centred on the value
                 int ax = (int)std::lround(x0 - px), ay = (int)std::lround(y0 - py), bx = (int)std::lround(x0 + px), by = (int)std::lround(y0 + py);
@@ -183,9 +197,10 @@ protected:
         // the needle and hub
         uint16_t nc = ColNeedle;
         if (NeedleByZone) for (auto& z : Zones) if (Disp >= z.From && Disp <= z.To) nc = z.Colour;
-        float t = Angle(Disp) * 0.0174533f, sx = std::sin(t), sy = -std::cos(t);
+        float t = Angle(Disp) * SuperDialDraw::DEG2RAD, sx = std::sin(t), sy = -std::cos(t);
         int tipR = rad - ring - 1;
-        int tx = cx + (int)(sx * tipR), ty = cy + (int)(sy * tipR);
+        SuperDialDraw::Pt tip = SuperDialDraw::Polar(cx, cy, (float)tipR, Angle(Disp));
+        int tx = (int)std::lround(tip.x), ty = (int)std::lround(tip.y);
         if (Needle == NEEDLE_LINE) {
             Spr.drawLine(cx, cy, tx, ty, nc);
             Spr.drawLine(cx + 1, cy, tx + 1, ty, nc);
@@ -193,10 +208,20 @@ protected:
             int bx = (int)(-sy * hubR * 0.8f), by = (int)(sx * hubR * 0.8f);   // the base is perpendicular to the needle
             Spr.fillTriangle(tx, ty, cx + bx, cy + by, cx - bx, cy - by, nc);
         }
-        Spr.fillCircle(cx, cy, hubR, nc);
-        Spr.drawCircle(cx, cy, hubR + 1, ColFg);
+        if (inHub) {                                                          // the box covers the needle base; the needle comes out of it
+            Spr.fillRoundRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH, 3, ColBg);
+            Spr.drawRoundRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH, 3, nc);
+            char b[24], u[40];
+            FormatNumber(Value, b, sizeof b, Decimals);
+            snprintf(u, sizeof u, "%s%s", b, Unit.c_str());
+            Spr.setFont(Font); Spr.setTextColor(ColFg); Spr.setTextDatum(lgfx::textdatum_t::middle_center);
+            Spr.drawString(u, cx, cy);
+        } else {
+            Spr.fillCircle(cx, cy, hubR, nc);
+            Spr.drawCircle(cx, cy, hubR + 1, ColFg);
+        }
 
-        if (ShowValue) {                                                      // the value as text, in the control's font
+        if (ShowValue && !inHub) {                                                      // the value as text, in the control's font
             char b[24], u[40];
             FormatNumber(Value, b, sizeof b, Decimals);
             snprintf(u, sizeof u, "%s%s", b, Unit.c_str());
@@ -257,16 +282,8 @@ private:
         return c;
     }
 
-    float Angle(float v) const { return Start + (End - Start) * (v - Min) / (Max - Min); }       // degrees clockwise from 12 o'clock
+    float Angle(float v) const { return SuperDialDraw::ValueToAngle(v, Min, Max, Start, End); }       // degrees clockwise from 12 o'clock
 
-    // Filled ring segment between two radii; angles are clockwise from 12 o'clock (LovyanGFX counts from 3 o'clock).
-    void Arc(int cx, int cy, int r0, int r1, float a0, float a1, uint16_t colour) {
-        auto norm = [](float a) { a = std::fmod(a - 90.f, 360.f); return a < 0 ? a + 360.f : a; };
-        float s = norm(a0), e = norm(a1);
-        if (a1 - a0 >= 359.9f) { s = 0; e = 360; }
-        Spr.fillArc(cx, cy, r0, r1, s, e, colour);
-    }
-    static void FormatNumber(float v, char* b, size_t n, int decimals) {
-        if (decimals <= 0) snprintf(b, n, "%d", (int)std::lround(v)); else snprintf(b, n, "%.*f", decimals, v);
-    }
+    void Arc(int cx, int cy, int r0, int r1, float a0, float a1, uint16_t colour) { SuperDialDraw::Arc(Spr, cx, cy, r0, r1, a0, a1, colour); }
+    static void FormatNumber(float v, char* b, size_t n, int decimals) { SuperDialDraw::FormatNumber(v, b, n, decimals); }
 };

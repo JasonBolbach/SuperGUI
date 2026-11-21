@@ -26,7 +26,7 @@ public:
                   SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB)
         : SuperControl(dst, x, y, width, font), BodyH(bodyHeight < 8 ? 8 : bodyHeight), IO(enc, btnA, btnB) {}
 
-    void SetAbort(bool (*fn)()) { IO.Abort = fn; }
+    void SetAbort(bool (*fn)()) override { IO.Abort = fn; }
     void SetOnAccept(void (*fn)(void*), void* user = nullptr) { IO.OnAccept = fn; IO.OnAcceptUser = user; }
     SuperEditIO* EditIO() { return &IO; }
 
@@ -57,9 +57,9 @@ public:
 
     // ---- editing (= scrolling): the same contract as the other editable controls ----
     bool IsEditing() const override { return State == EDIT_ACTIVE; }
-    bool StartEdit() { IO.Flush(); State = EDIT_ACTIVE; PushUnlessPress(); return true; }
+    bool StartEdit() override { IO.Flush(); State = EDIT_ACTIVE; PushUnlessPress(); return true; }
     bool BeginEdit() { return SuperRunEdit(*this); }
-    SuperEditState Service() {
+    SuperEditState Service() override {
         if (State != EDIT_ACTIVE) return EDIT_IDLE;
         if (IO.Aborted()) return Finish(EDIT_CANCELLED);
         bool redraw = false; int d = (int)IO.Delta();

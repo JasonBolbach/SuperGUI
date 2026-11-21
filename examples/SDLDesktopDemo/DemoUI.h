@@ -1,5 +1,5 @@
 #pragma once
-// DemoUI: every SuperGUI control on four tab pages, laid out for a 480 x 320 landscape touch screen.
+// DemoUI: every SuperGUI control on six tab pages, laid out for a 480 x 320 landscape touch screen.
 // Portable on purpose (LovyanGFX + SuperGUI only), so main.cpp stays about hardware.
 //
 //   Encoder = move the highlight / change a value      ButtonA short = edit the highlighted control
@@ -33,6 +33,7 @@
 #include <SuperGraph.h>
 #include <SuperUserDraw.h>
 #include <SuperGauge.h>
+#include <SuperDial.h>
 #include <SuperTouch.h>
 #include <SuperForm.h>
 
@@ -58,7 +59,7 @@ public:
     const int W = dst->width();
 
     Tabs = new SuperTabBar(dst, 0, 0, W, F, E, A, B);
-    Tabs->AddTab("Input"); Tabs->AddTab("Choose"); Tabs->AddTab("Values"); Tabs->AddTab("Menu"); Tabs->AddTab("Draw");
+    Tabs->AddTab("Input"); Tabs->AddTab("Choose"); Tabs->AddTab("Values"); Tabs->AddTab("Menu"); Tabs->AddTab("Draw"); Tabs->AddTab("Dials");
     Tabs->SetBorder(1, EDGE); Tabs->SetOnAccept(&OnTabThunk, this);
 
     // ---- page 1: Input ----
@@ -135,6 +136,7 @@ public:
     Graph = new SuperGraph(dst, 248, 36, W - 256, F, 150);
     Graph->SetLabel("Graph (display only)"); Graph->SetLabelColor(LBL); Graph->SetBorder(1, EDGE);
     Graph->SetRange(-10, 10); Graph->ShowRange = true;
+    Graph->SetOnBeforeDraw(&GraphBefore, this); Graph->SetPollMs(100);
 
     Pages[3] = { Menu, Graph };
 
@@ -144,6 +146,7 @@ public:
     Gauge->SetRange(0, 100); Gauge->SetFormat(0, "%");
     Gauge->AddZone(0, 60, 0x07E0); Gauge->AddZone(60, 85, 0xFFE0); Gauge->AddZone(85, 100, 0xF800);   // green, yellow, red; the needle follows the zone
     Gauge->SetMinMax(6000, 6.f);                                // MinMax lines: lowest / highest value of the last 6 s, shown when 6+ degrees from the needle
+    Gauge->SetOnBeforeDraw(&GaugeBefore, this); Gauge->SetPollMs(500);
 
     Pad = new SuperUserDraw(dst, 244, 36, W - 252, 140);
     Pad->SetLabel("Sketch: touch to draw, hold to clear"); Pad->SetBorder(1, EDGE);
@@ -151,6 +154,26 @@ public:
     Pad->SetOnDraw(&PadDraw, this); Pad->SetOnPointer(&PadPointer, this);
 
     Pages[4] = { Gauge, Pad };
+
+    // ---- page 6: Dials (SuperDial): a clock, a compass with a turning card, a tachometer ----
+    {
+      const int gap = 6, dw = (W - 2 * 8 - 2 * gap) / 3, body = std::min(dw, dst->height() - StatusH - 36 - 26);
+      Clock = new SuperDial(dst, 8, 36, dw, body, F);
+      Clock->SetLabel("Clock"); Clock->SetBorder(1, EDGE); Clock->MakeClock(); Clock->SetSmoothing(false);
+      Compass = new SuperDial(dst, 8 + dw + gap, 36, dw, body, F);
+      Compass->SetLabel("Compass"); Compass->SetBorder(1, EDGE); Compass->MakeCompass();
+      Compass->AddPointer(0.6f, 3, 0x07FF, SuperDial::POINTER_LINE, true);          // a bearing marker that turns with the card ...
+      Compass->SetPointerValue(1, 90);                                              // ... fixed at east
+      Tacho = new SuperDial(dst, 8 + 2 * (dw + gap), 36, dw, body, F);
+      Tacho->SetLabel("Tachometer"); Tacho->SetBorder(1, EDGE);
+      Tacho->SetSweep(0, 8, -135, 135); Tacho->SetTicks(8, 1); Tacho->SetFormat(1, "k");
+      Tacho->AddZone(0, 6, 0x07E0); Tacho->AddZone(6, 7, 0xFFE0); Tacho->AddZone(7, 8, 0xF800);
+      Tacho->AddPointer(0.9f, 5, 0xFFFF);
+      Clock->SetOnBeforeDraw(&ClockBefore, this); Clock->SetPollMs(250);              // BeforeDraw: the dials ask for their own values, and redraw only when they changed
+      Compass->SetOnBeforeDraw(&CompassBefore, this); Compass->SetPollMs(250);
+      Tacho->SetOnBeforeDraw(&TachoBefore, this); Tacho->SetPollMs(250);
+      Pages[5] = { Clock, Compass, Tacho };
+    }
 
     Msg = new SuperMessageBox(dst, 300, F, E, A, B);
     Msg->SetLabel("Confirm");
@@ -165,20 +188,18 @@ public:
       Form->Add(c);
     Form->Add(Pad);
     Form->Add(Gauge, false);                                    // display only: animates, never focused
+    Form->Add(Clock, false); Form->Add(Compass, false); Form->Add(Tacho, false);
     Form->Add(Bar, false);
     Form->Add(Graph, false);
 
-    for (int i = 1; i < 5; ++i) for (auto* c : Pages[i]) c->SetVisible(false);
+    for (int i = 1; i < 6; ++i) for (auto* c : Pages[i]) c->SetVisible(false);
     dst->fillScreen(0);
     Form->Draw();
     DrawStatus();
   }
 
   // Optional: polled by every editing control; return true to cancel the edit (the desktop demo uses it so closing the window ends a blocking edit).
-  void SetAbort(bool (*fn)()) {
-    Phone->SetAbort(fn); Name->SetAbort(fn); Level->SetAbort(fn); TimeBox->SetAbort(fn); DateBox->SetAbort(fn); Picker->SetAbort(fn);
-    Combo->SetAbort(fn); Items->SetAbort(fn); Slide->SetAbort(fn); Menu->SetAbort(fn); Tabs->SetAbort(fn); Msg->SetAbort(fn);
-  }
+  void SetAbort(bool (*fn)()) { Form->SetAbort(fn); }               // one call reaches every control in the form
 
   // Switch the whole demo to the Sleek border style (label on the frame line) and back, restoring each control's own style.
   // Label font and alignment are not touched here (small / left from Begin()).
@@ -189,19 +210,10 @@ public:
     ShowPage(Page);                                                   // sizes changed: clear the page area and draw it once
   }
 
-  // Call from loop(): handles input, feeds the graph, redraws the status strip.
+  // Call from loop(): handles input (the graph, gauge and dials feed themselves through BeforeDraw), redraws the status strip.
   void Service() {
     if (StyleDirty) { StyleDirty = false; ApplyStyle(SleekChk->GetChecked()); }
     uint32_t now = lgfx::millis();
-    if (now - LastSample >= 100) {
-      LastSample = now;
-      Graph->AddSample(std::sin(Tick * 0.12f) * 8 + std::sin(Tick * 0.5f) * 2, Page == 3);
-      ++Tick;
-    }
-    if (now - LastGauge >= 500) {                                  // a new target value twice a second: the needle glides to it
-      LastGauge = now;
-      Gauge->SetValue(50.f + 40.f * std::sin(now * 0.0011f) + 12.f * std::sin(now * 0.0037f));
-    }
     Form->Service();
     if (Redraw) { Redraw = false; Form->Redraw(RX, RY, RW, RH, 0); }
     if (now - LastStatus >= 100 || StatusDirty) { LastStatus = now; StatusDirty = false; DrawStatus(); }
@@ -217,14 +229,21 @@ private:
   SuperSlider* Slide; SuperProgressBar* Bar; SuperPushButton* Push;
   SuperMenu* Menu; SuperGraph* Graph;
   SuperGauge* Gauge; SuperUserDraw* Pad;
+  SuperDial* Clock; SuperDial* Compass; SuperDial* Tacho;
+  // SuperDial BeforeDraw callbacks (called by the dials from Form->Service()): a clock from the run time, a wandering heading, a revving engine
+  static void GraphBefore(void* u) { auto* d = static_cast<DemoUI*>(u); d->Graph->AddSample(std::sin(d->Tick * 0.12f) * 8 + std::sin(d->Tick * 0.5f) * 2); ++d->Tick; }   // a new sample every 100 ms, only while the page is shown
+  static void GaugeBefore(void* u) { auto* d = static_cast<DemoUI*>(u); float t = (float)lgfx::millis(); d->Gauge->SetValue(50.f + 40.f * std::sin(t * 0.0011f) + 12.f * std::sin(t * 0.0037f)); }   // a new target twice a second: the needle glides to it
+  static void ClockBefore(void* u) { auto* d = static_cast<DemoUI*>(u); uint32_t sec = lgfx::millis() / 1000 + 10 * 3600 + 8 * 60; d->Clock->SetTime((int)(sec / 3600 % 24), (int)(sec / 60 % 60), (int)(sec % 60)); }     // starts at 10:08:00
+  static void CompassBefore(void* u) { auto* d = static_cast<DemoUI*>(u); d->Compass->SetHeading(std::fmod(lgfx::millis() * 0.012f, 360.f)); }
+  static void TachoBefore(void* u) { auto* d = static_cast<DemoUI*>(u); float t = (float)lgfx::millis(); d->Tacho->SetPointerValue(0, 3.5f + 3.5f * std::sin(t * 0.0008f) * std::sin(t * 0.0003f)); }
   int PadLX = 0, PadLY = 0, PadPen = 0;                     // sketch pad: last point and pen colour index
   bool PadFresh = true;                                     // nothing drawn yet: the hint text is showing
   SuperTabBar* Tabs; SuperMessageBox* Msg;
-  std::vector<SuperControl*> Pages[5];
+  std::vector<SuperControl*> Pages[6];
   std::vector<std::pair<SuperControl*, SuperControl::BorderStyle>> Saved;   // original border styles (ApplyStyle)
   std::vector<SuperControl*> Styled() {                                     // every control that can show a label
     std::vector<SuperControl*> v;
-    for (int p = 0; p < 5; ++p) for (auto* c : Pages[p]) v.push_back(c);
+    for (int p = 0; p < 6; ++p) for (auto* c : Pages[p]) v.push_back(c);
     v.push_back(Msg);
     return v;
   }
@@ -232,13 +251,13 @@ private:
   int Page = 0;
   bool Redraw = false, StatusDirty = true, StyleDirty = false;
   int RX = 0, RY = 0, RW = 0, RH = 0;                  // area to repaint after a popup closed
-  uint32_t LastGauge = 0, LastSample = 0, LastStatus = 0, Tick = 0;
+  uint32_t LastStatus = 0, Tick = 0;
   uint16_t PickColor = 0xF800;
   std::string Last = "encoder = move, A = edit";
 
   void ShowPage(int p) {
     Page = p;
-    for (int i = 0; i < 5; ++i) if (i != p) for (auto* c : Pages[i]) c->SetVisible(false, false);   // flags only: no per-control erase
+    for (int i = 0; i < 6; ++i) if (i != p) for (auto* c : Pages[i]) c->SetVisible(false, false);   // flags only: no per-control erase
     for (auto* c : Pages[p]) c->SetVisible(true, false);                                           // ... and no draw at full brightness
     int top = Tabs->GetY() + Tabs->GetHeight() + 6;                                                 // below the tab bar's focus box
     Dst->fillRect(0, top, Dst->width(), Dst->height() - StatusH - top, 0);                          // clear the old page in one go

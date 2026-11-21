@@ -48,6 +48,7 @@
 <a class="item" href="../controls/progressbar.html">SuperProgressBar</a>
 <a class="item cur" href="../controls/graph.html">SuperGraph</a>
 <a class="item" href="../controls/gauge.html">SuperGauge</a>
+<a class="item" href="../controls/dial.html">SuperDial</a>
 <a class="item" href="../controls/richtext.html">SuperRichText</a>
 <h4>Custom</h4>
 <a class="item" href="../controls/userdraw.html">SuperUserDraw</a>
@@ -61,8 +62,8 @@ form.Add(&amp;g, false);
 g.AddSample(sensor());</code></pre>
 <h2>Unique features</h2><ul><li>One sample per pixel of inner width by default (<code>SetCapacity(n)</code> changes that; the line is scaled).</li><li>Automatic vertical range (min..max of what is shown plus a margin) unless <code>SetRange(lo,hi)</code>.</li><li><code>ShowRange</code> prints top / bottom values; <code>ShowGrid</code> draws three faint lines.</li><li>Memory: capacity x 4 bytes plus the sprite.</li></ul>
 <h2>GUI workflow</h2><p>Nothing to operate.</p>
-<h2>Event workflow</h2><p>None. <code>AddSample(v, redraw=true)</code> appends and redraws; pass <code>false</code> to batch.</p>
-<h2>Main API</h2><table><tr><th>Call</th><th>What it does</th></tr><tr><td><code>AddSample(v, redraw)</code></td><td>Append</td></tr><tr><td><code>SetRange / SetAutoRange</code></td><td>Vertical scale</td></tr><tr><td><code>SetCapacity(n)</code></td><td>Samples kept</td></tr><tr><td><code>Clear()</code></td><td>Remove all</td></tr></table>
+<h2>Event workflow</h2><p>None by default. <code>AddSample(v, redraw=true)</code> appends and redraws; pass <code>false</code> to batch. Optional <b>BeforeDraw</b> (pull model): <code>SetOnBeforeDraw(fn, user)</code> and <code>SetPollMs(ms)</code> call your function from <code>Tick()</code> every <code>ms</code> milliseconds (0 = every service pass, first call at once); call <code>AddSample()</code> in it. Nothing is drawn while it runs and the control redraws only if something changed (<code>src/SuperBeforeDraw.h</code>, shared with <a href="dial.html">SuperDial</a>).</p>
+<h2>Main API</h2><table><tr><th>Call</th><th>What it does</th></tr><tr><td><code>AddSample(v, redraw)</code></td><td>Append</td></tr><tr><td><code>SetRange / SetAutoRange</code></td><td>Vertical scale</td></tr><tr><td><code>SetCapacity(n)</code></td><td>Samples kept</td></tr><tr><td><code>Clear()</code></td><td>Remove all</td></tr><tr><td><code>SetOnBeforeDraw(fn,user) / SetPollMs(ms)</code></td><td>Callback that adds the samples</td></tr></table>
 <h2>Tips and tricks</h2><div class="box tip"><b class="h">Tip</b>Use a fixed range for stable visuals; auto range rescales as extremes scroll out.</div>
 <h2>See also</h2><p><a href="gauge.html">SuperGauge</a></p>
 <div class="pn"><span>&larr; <a href="../controls/progressbar.html">SuperProgressBar</a></span><span><a href="../controls/gauge.html">SuperGauge</a> &rarr;</span></div>

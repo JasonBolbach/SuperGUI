@@ -16,7 +16,7 @@ public:
                 SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB)
         : SuperControl(dst, x, y, width, font), IO(enc, btnA, btnB) {}
 
-    void SetAbort(bool (*fn)()) { IO.Abort = fn; }
+    void SetAbort(bool (*fn)()) override { IO.Abort = fn; }
     void SetOnChange(void (*fn)(void*), void* user = nullptr) { IO.OnChange = fn; IO.OnChangeUser = user; }
     void SetOnAccept(void (*fn)(void*), void* user = nullptr) { IO.OnAccept = fn; IO.OnAcceptUser = user; }
     void SetRange(int32_t mn, int32_t mx) { Min = mn; Max = mx <= mn ? mn + 1 : mx; Value = std::clamp(Value, Min, Max); Dirty = true; }

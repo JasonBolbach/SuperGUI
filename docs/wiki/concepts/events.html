@@ -48,6 +48,7 @@
 <a class="item" href="../controls/progressbar.html">SuperProgressBar</a>
 <a class="item" href="../controls/graph.html">SuperGraph</a>
 <a class="item" href="../controls/gauge.html">SuperGauge</a>
+<a class="item" href="../controls/dial.html">SuperDial</a>
 <a class="item" href="../controls/richtext.html">SuperRichText</a>
 <h4>Custom</h4>
 <a class="item" href="../controls/userdraw.html">SuperUserDraw</a>
@@ -72,6 +73,8 @@
 <p>Check box, radio button and push button act in <code>StartEdit()</code> and report <code>EDIT_ACCEPTED</code> on the next <code>Service()</code>; their <code>OnChange</code> and <code>OnAccept</code> fire together.</p>
 <h2>Animation clocks</h2>
 <p><code>SuperControl::Tick()</code> is driven by <code>SuperForm::Service()</code>. The gauge glide and MinMax expiry and the user-draw auto-redraw use it; without a form call the control's <code>Update()</code> from <code>loop()</code>.</p>
+<h2>BeforeDraw: let the control ask for its values</h2>
+<p>Every control has <code>SetOnBeforeDraw(fn, user)</code> and <code>SetPollMs(ms)</code>. <code>SuperForm::Service()</code> (or <code>Update()</code> without a form) calls <code>fn(user)</code> every <code>ms</code> milliseconds (0 = on every pass; the first call is at once). Set the values there: <code>SetText</code>, <code>SetValue</code>, <code>SetChecked</code>, <code>SetPointerValue</code>, <code>AddSample</code>. Nothing is drawn while it runs; the control redraws once afterwards and only if something changed, so setting the same value every time costs nothing. A hidden control, or one being edited, is not asked. In the <a href="../designer/designer-code.html">Form Designer</a> every control has a <i>BeforeDraw</i> row that generates <code>&lt;name&gt;_BeforeDraw()</code>.</p>
 <div class="box tip"><b class="h">Keep callbacks short</b><p>Callbacks run inside <code>Service()</code>, i.e. inside the UI loop. Set a flag or store a value; do not block, and do not open a modal control from inside another control's <code>OnChange</code>.</p></div>
 <div class="pn"><span>&larr; <a href="../concepts/touch.html">Touch</a></span><span><a href="../concepts/form.html">SuperForm: focus and screens</a> &rarr;</span></div>
 </main><script src="../assets/wiki.js"></script></body></html>

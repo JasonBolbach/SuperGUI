@@ -43,9 +43,22 @@ public:
     }
     void SetOnEdit(void (*fn)(SuperControl*, SuperEditState, void*), void* user = nullptr) { OnEdit = fn; OnEditUser = user; }
 
+    // ---- settings for every control at once ----
+    //  * SetAbort(fn)        the same abort function for every control with an edit session (return true to cancel the edit, e.g. window closed).
+    //                        Also given to controls added later, so it can be called before or after the Add() calls.
+    //  * ApplyTheme(t)       the theme on every control. Sizes can change, so clear the screen and call Draw() afterwards.
+    //  * SetBorderStyle(s)   one border style for every control.   * SetEnabled(e)   enable / dim every control.
+    //  * ForEach(fn, user)   your own function for every control: fn(control, user). Anything not listed above (SetColors, SetPadding, ...) goes here.
+    void SetAbort(bool (*fn)()) { AbortFn = fn; for (auto& it : Items) it.C->SetAbort(fn); }
+    void ApplyTheme(const SuperTheme& t) { for (auto& it : Items) it.C->ApplyTheme(t); }
+    void SetBorderStyle(SuperControl::BorderStyle s) { for (auto& it : Items) it.C->SetBorderStyle(s); }
+    void SetEnabled(bool e) { for (auto& it : Items) it.C->SetEnabled(e); AfterGroupChange(true); }
+    void ForEach(void (*fn)(SuperControl*, void*), void* user = nullptr) { if (fn) for (auto& it : Items) fn(it.C, user); }
+
     void Add(SuperControl* c, bool focusable = true) {
         if (!c) return;
         Items.push_back({ c, focusable });
+        if (AbortFn) c->SetAbort(AbortFn);
         if (Focus < 0 && Can((int)Items.size() - 1)) Focus = (int)Items.size() - 1;
     }
     int  Count() const { return (int)Items.size(); }
@@ -218,6 +231,7 @@ private:
         Focus = want;
     }
     SuperControl* Active = nullptr;
+    bool (*AbortFn)() = nullptr;
     void (*OnEdit)(SuperControl*, SuperEditState, void*) = nullptr;
     void* OnEditUser = nullptr;
 
@@ -226,7 +240,8 @@ private:
         for (int i = 0; i < Count(); ++i) {
             SuperControl* c = Items[i].C;
             if (c == Active || !c->IsVisible() || SuperControl::EditingNow) continue;
-            if (c->Tick()) { if (Items[i].Focusable) c->DrawPreview(i == Focus); else c->Push(); }
+            bool due = c->RunBeforeDraw();                          // BeforeDraw: the control asks the user's code for its values (not drawn meanwhile)
+            if (c->Tick() || due) { if (Items[i].Focusable) c->DrawPreview(i == Focus); else c->Push(); }
         }
     }
     void DrawItems(bool clip, int rx, int ry, int rw, int rh) {

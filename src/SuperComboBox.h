@@ -33,7 +33,7 @@ public:
 
     SuperListBox& ListBox() { return List; }                       // style the popup
     void ApplyTheme(const SuperTheme& t) override { SuperTextBox::ApplyTheme(t); List.ApplyTheme(t); }
-    void SetAbort(bool (*fn)()) { List.SetAbort(fn); }
+    void SetAbort(bool (*fn)()) override { List.SetAbort(fn); }
     // OnChange: the cursor moved (live). OnAccept: an item was accepted (GetSelected() is new).
     void SetOnChange(void (*fn)(void*), void* user = nullptr) { List.SetOnChange(fn, user); }
     void SetOnAccept(void (*fn)(void*), void* user = nullptr) { AcceptFn = fn; AcceptUser = user; }
@@ -110,7 +110,7 @@ public:
         return List.OnPointer(e);
     }
 
-    bool StartEdit() {                                             // non-blocking: then call Service()
+    bool StartEdit() override {                                             // non-blocking: then call Service()
         if (List.Count() == 0) return false;
         List.SetRows(std::min(List.Count(), std::max(1, MaxRows)));
         int ph = List.GetHeight(), below = GetBoxTop() + GetBoxHeight(), py = below;
@@ -134,7 +134,7 @@ public:
     }
 
     // Returns EDIT_ACTIVE while editing, then EDIT_ACCEPTED or EDIT_CANCELLED once, then EDIT_IDLE.
-    SuperEditState Service() {
+    SuperEditState Service() override {
         if (State != EDIT_ACTIVE) return EDIT_IDLE;
         SuperEditState r = List.Service();
         if (r == EDIT_ACTIVE) {

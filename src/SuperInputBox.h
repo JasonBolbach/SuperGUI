@@ -43,7 +43,7 @@ public:
     }
 
     // Polled while editing; if it returns true the edit is cancelled (e.g. window closed).
-    void SetAbort(bool (*fn)()) { IO.Abort = fn; }
+    void SetAbort(bool (*fn)()) override { IO.Abort = fn; }
     // Called whenever the value being edited changes (live, before it is accepted).
     void SetOnChange(void (*fn)(void*), void* user = nullptr) { IO.OnChange = fn; IO.OnChangeUser = user; }
     // Called once when an edit is accepted (GetValue() already returns the new value).
@@ -138,7 +138,7 @@ public:
         return SuperPointerDefault(IO, *this, e);
     }
 
-    bool StartEdit() {                                             // non-blocking: then call Service()
+    bool StartEdit() override {                                             // non-blocking: then call Service()
         if (SlotCell.empty()) return false;
         Work = Committed; Cursor = 0; EditingChar = false; Editing = true;
         IO.Flush();
@@ -149,7 +149,7 @@ public:
     }
 
     // Returns EDIT_ACTIVE while editing, then EDIT_ACCEPTED or EDIT_CANCELLED once, then EDIT_IDLE.
-    SuperEditState Service() {
+    SuperEditState Service() override {
         if (State != EDIT_ACTIVE) return EDIT_IDLE;
         if (IO.Aborted()) return Finish(EDIT_CANCELLED);
         bool redraw = false;

@@ -64,7 +64,7 @@ add('edit-contract', 'The edit contract', 'StartEdit / Service / callbacks, iden
 <tr><td><code>BeginEdit()</code></td><td>Blocking wrapper. False if disabled/hidden; true only if accepted.</td></tr>
 <tr><td><code>SetOnChange(fn,user)</code></td><td>The value being edited changed (live). List / combo / tabs / menu: the cursor moved.</td></tr>
 <tr><td><code>SetOnAccept(fn,user)</code></td><td>Accepted. The stored value is already the new one.</td></tr>
-<tr><td><code>SetAbort(fn)</code></td><td>Polled in <code>Service()</code>; returning true cancels (desktop: <code>Quitting()</code>).</td></tr></table>
+<tr><td><code>SetAbort(fn)</code></td><td>Polled in <code>Service()</code>; returning true cancels (desktop: <code>Quitting()</code>). <code>Form.SetAbort(fn)</code> sets it on every control at once.</td></tr></table>
 ''' + flow('StartEdit()', 'Service() = EDIT_ACTIVE ...', 'EDIT_ACCEPTED or EDIT_CANCELLED (once)', 'EDIT_IDLE') + '''
 <h2>The rule that matters most</h2>
 ''' + box('note', 'Stored values change only on accept', '<p>While editing, the control works on a copy. <code>GetValue()</code> keeps returning the old value until the user accepts. Cancel (B short) throws the copy away; B long reverts the copy to the start and keeps editing.</p>') + '''
@@ -142,6 +142,8 @@ add('events', 'Events and workflow', 'How input travels through the library', ''
 <p>Check box, radio button and push button act in <code>StartEdit()</code> and report <code>EDIT_ACCEPTED</code> on the next <code>Service()</code>; their <code>OnChange</code> and <code>OnAccept</code> fire together.</p>
 <h2>Animation clocks</h2>
 <p><code>SuperControl::Tick()</code> is driven by <code>SuperForm::Service()</code>. The gauge glide and MinMax expiry and the user-draw auto-redraw use it; without a form call the control's <code>Update()</code> from <code>loop()</code>.</p>
+<h2>BeforeDraw: let the control ask for its values</h2>
+<p>Every control has <code>SetOnBeforeDraw(fn, user)</code> and <code>SetPollMs(ms)</code>. <code>SuperForm::Service()</code> (or <code>Update()</code> without a form) calls <code>fn(user)</code> every <code>ms</code> milliseconds (0 = on every pass; the first call is at once). Set the values there: <code>SetText</code>, <code>SetValue</code>, <code>SetChecked</code>, <code>SetPointerValue</code>, <code>AddSample</code>. Nothing is drawn while it runs; the control redraws once afterwards and only if something changed, so setting the same value every time costs nothing. A hidden control, or one being edited, is not asked. In the <a href="../designer/designer-code.html">Form Designer</a> every control has a <i>BeforeDraw</i> row that generates <code>&lt;name&gt;_BeforeDraw()</code>.</p>
 ''' + box('tip', 'Keep callbacks short', '<p>Callbacks run inside <code>Service()</code>, i.e. inside the UI loop. Set a flag or store a value; do not block, and do not open a modal control from inside another control\'s <code>OnChange</code>.</p>'))
 
 add('form', 'SuperForm: focus and screens', 'Focus handling, pages, redraws', '''

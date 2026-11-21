@@ -48,6 +48,7 @@
 <a class="item" href="../controls/progressbar.html">SuperProgressBar</a>
 <a class="item" href="../controls/graph.html">SuperGraph</a>
 <a class="item" href="../controls/gauge.html">SuperGauge</a>
+<a class="item" href="../controls/dial.html">SuperDial</a>
 <a class="item" href="../controls/richtext.html">SuperRichText</a>
 <h4>Custom</h4>
 <a class="item" href="../controls/userdraw.html">SuperUserDraw</a>
@@ -61,7 +62,8 @@
 <div class="box tip"><b class="h">Tip</b><b>Gauge:</b> the Zones dialog has <b>Fill 3 bands</b> (green / yellow / red at 60 / 85 / 100 % of the range). Update the needle with <code>load.SetValue(v)</code>.</div>
 <div class="box tip"><b class="h">Tip</b><b>Graph:</b> <i>Preview data</i> (Sine / Rising / Noise) only exists so the designer shows something. It is not generated: feed the real graph with <code>trace.AddSample(v)</code>.</div>
 <div class="box tip"><b class="h">Tip</b><b>Press <code>?</code></b> in the designer for the key list. A <b>Rich text</b> control is a good place for your own help screen: write it in the editor, scroll it with the encoder.</div>
-<div class="box tip"><b class="h">Tip</b><b>Heights:</b> the <i>Height</i> row (list box, menu, gauge, graph, user draw, rich text) takes the total height including the frame; type a number and it snaps to the nearest whole row or line. It changes the same thing as <i>Visible rows</i> / <i>Body height</i>.</div>
+<div class="box tip"><b class="h">Tip</b><b>Dial:</b> the <i>Preset</i> row fills in a whole face (Gauge, Compass, Clock or Tachometer): scale, ticks, labels, zones and pointers. Change anything afterwards. The dial has up to three pointers (the <i>Pointers</i> row); a pointer set to <i>on card</i> turns with the face. The <i>BeforeDraw (ms)</i> row sets how often your <code>BeforeDraw</code> handler runs. <i>Face rotation</i> is the starting angle; your code moves it with <code>SetHeading()</code> or <code>SetFaceRotation()</code>. A wrapping scale runs from 0, so Minimum must be 0; there a zone may cross the top (<i>From</i> above <i>To</i>, e.g. 300 to 40).</div>
+<div class="box tip"><b class="h">Tip</b><b>Heights:</b> the <i>Height</i> row (list box, menu, gauge, dial, graph, user draw, rich text) takes the total height including the frame; type a number and it snaps to the nearest whole row or line. It changes the same thing as <i>Visible rows</i> / <i>Body height</i>.</div>
 <div class="box tip"><b class="h">Tip</b><b>Tab order:</b> add the controls in the order the user should visit them, or type the numbers in the Tab order row (1, 2, 3 ... or 10, 20, 30 to leave room). Display-only controls (labels, gauges ...) have no tab number.</div>
 <div class="box tip"><b class="h">Tip</b><b>Overlapping controls:</b> select one in the Controls On Form list and use <b>Front</b> / <b>Back</b>. The list reads from back (top of the list) to front (bottom).</div>
 <div class="box tip"><b class="h">Tip</b><b>Pages:</b> design every page in the same area of the form and use the <b>View</b> button to edit one page at a time.</div>
@@ -70,7 +72,7 @@
 <div class="box warn"><b class="h">Watch out</b><b>Editing <code>Form1.designer.h</code>.</b> It is overwritten on every export. Your code belongs in <code>Form1.h</code>.</div>
 <div class="box warn"><b class="h">Watch out</b><b>A new handler is not in your file.</b> After you add a control, export and read the status line: it names the handlers <code>Form1.h</code> does not have. Copy the stubs from the <code>protected:</code> list.</div>
 <div class="box warn"><b class="h">Watch out</b><b>Names are strictly checked.</b> A C++ keyword (<code>class</code>, <code>int</code>), a library or Arduino name (<code>delay</code>, <code>Serial</code>, <code>PI</code>, <code>HIGH</code>), a pin name (<code>A0</code>, <code>D13</code>), a macro defined by the headers, a name starting with an underscore or <code>fd_</code>, or one that ends like a handler (<code>x_Click</code>) is refused. Two things can never share a name: controls, radio groups, menu IDs, control groups, message boxes and their button names, and the form (<code>Form1</code>, <code>Form1Base</code>).</div>
-<div class="box warn"><b class="h">Watch out</b><b>The constructor needs both buttons</b>: <code>(dst, enc, btnA, btnB)</code>.</div>
+<div class="box warn"><b class="h">Watch out</b><b>The constructor needs both buttons</b>: <code>(dst, enc, btnA, btnB)</code>, plus the optional <code>touch</code>.</div>
 <div class="box warn"><b class="h">Watch out</b><b>A group show overrides Visible</b> unless the form&rsquo;s <b>Keep hidden</b> row is Yes: then a Visible = No control stays hidden when its group (or tab page) is shown; <code>ctl.SetVisible(true)</code> shows it.</div>
 <div class="box warn"><b class="h">Watch out</b><b>Text is US-ASCII.</b> Accented letters and symbols outside the printable ASCII range are dropped when typed, pasted or loaded.</div>
 <div class="box warn"><b class="h">Watch out</b><b>Message boxes block.</b> <code>_Ask()</code> does not return until the user answers. Use <code>_Open()</code> / <code>_Poll()</code> in a loop that must keep running.</div>

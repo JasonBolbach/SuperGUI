@@ -93,7 +93,7 @@ enum Prop { P_NAME, P_TEXT, P_X, P_Y, P_W, P_BSIZE, P_PAD, P_GROUP, P_FNAME, P_F
             P_ITEMS = 98,                          // the items of a list box / combo box / tab bar (opens the items dialog)
             P_HINT = 99,                           // a row that only shows a hint (the template legend)
             P_EXTRA = 100 };                       // P_EXTRA + i = the selected control's i-th extra property (FD::ExtraAt), see FormModel.h
-static const int MAX_FIELDS = 64;                    // (a gauge has about 42 rows)
+static const int MAX_FIELDS = 80;                    // (a gauge has about 42 rows, a dial with three pointers about 70)
 static FD::TextField fields[MAX_FIELDS];
 static int fieldProp[MAX_FIELDS], nFields = 0;
 static int propScroll = 0;                           // the property panel scrolls when a control has more rows than fit
@@ -290,6 +290,7 @@ static std::string PropValue(int p) {
     }
     return "";
 }
+static void BuildFields();
 // A change to one of the control's extra properties, tried on a copy: the real control judges whether it makes sense (refused values keep the old one).
 static bool ApplyExtra(int p, const std::string& v) {
     DControl* c = Sel(); const FD::ExtraDef* d = ExtraOf(p); if (!c || !d) return false;
@@ -303,8 +304,11 @@ static bool ApplyExtra(int p, const std::string& v) {
     }
     if (!msg.empty()) { rejectMsg = msg; Status("%s", msg.c_str()); dirty = true; return false; }       // strict: refused, the model keeps the old value, the row turns red
     rejectMsg.clear();
+    if (cand.type == FD::C_DIAL && key == "kind") FD::ApplyDialPreset(cand, (int)FD::XInt(cand, "kind"));      // a preset fills in the scale, ticks, labels, zones and pointers
     FD::Normalize(&scr, cand);                                                // stored the way the control prints it
+    bool rows = (cand.type == FD::C_DIAL && (key == "kind" || key == "pointers")) || key == "beforeDraw";                              // the pointer rows come and go
     *c = cand;
+    if (rows) { int keep = propScroll; BuildFields(); propScroll = keep; }
     if (c->type == FD::C_RADIO && key == "checked" && XBool(*c, "checked"))             // selecting a radio button deselects the others of its group
         for (DControl& o : form.items) if (&o != c && o.type == FD::C_RADIO && o.group == c->group) o.extra.erase("checked");
     return true;
@@ -356,11 +360,12 @@ static void BuildFields() {
         const FD::TypeInfo& ti = FD::Info(Sel()->type);
         add(P_NAME); if (ti.hasText) add(P_TEXT); if (Sel()->type == FD::C_RADIO) add(P_GROUP); add(P_X); add(P_Y); add(P_W); if (FD::HeightKindOf(Sel()->type) != FD::H_FIXED) add(P_H); if (FD::Focusable(*Sel())) add(P_TABORDER); add(P_CGROUP); add(P_VISIBLE); add(P_ENABLED);
         if (FD::HasList(Sel()->type) || Sel()->type == FD::C_MENU) add(P_ITEMS);
-        if (Sel()->type == FD::C_GAUGE) add(P_ZONES);
+        if (FD::HasZones(Sel()->type)) add(P_ZONES);
         if (Sel()->type == FD::C_RICHTEXT) add(P_RICH);
-        for (int i = 0; i < ti.nExtras; ++i) { add(P_EXTRA + i); if (std::string(ti.extras[i].key) == "template") add(P_HINT); }   // the type's own properties (+ the template legend)
+        for (int i = 0; i < ti.nExtras; ++i) { if (!FD::ExtraShown(*Sel(), i)) continue; add(P_EXTRA + i); if (std::string(ti.extras[i].key) == "template") add(P_HINT); }   // the type's own properties (+ the template legend)
         add(P_FONT); add(P_FG); add(P_BG); add(P_BORDER); add(P_BSTYLE); add(P_BSIZE); add(P_PAD); if (ti.hasAlign) add(P_ALIGN);
         if (ti.hasLabel) for (int i = 0; i < FD::N_LABEL_EXTRAS; ++i) add(P_EXTRA + ti.nExtras + i);   // the label group
+        for (int i = 0; i < FD::N_COMMON_EXTRAS; ++i) { int idx = ti.nExtras + (ti.hasLabel ? FD::N_LABEL_EXTRAS : 0) + i; if (FD::ExtraShown(*Sel(), idx)) add(P_EXTRA + idx); }   // BeforeDraw (every control)
     }
     else       { add(P_FNAME); add(P_FW); add(P_FH); add(P_FBG); add(P_KEEPHIDDEN); add(P_MSGBOXES); }
     focus = -1; drag = drag == D_TEXT ? D_NONE : drag; propScroll = 0;
@@ -441,7 +446,7 @@ static void OpenItemsDialog() {
     if (!Sel() && !AnyModal()) { boxDlg = new FD::MessageBoxEditor(&scr, "Message boxes of " + form.name, form, form.bg); focus = -1; drag = D_NONE; dirty = true; return; }
     DControl* c = Sel(); if (!c || AnyModal()) return;
     if (c->type == FD::C_RICHTEXT) { richDlg = new FD::RichTextEditor(&scr, "Text of " + c->name, *c, form.bg); focus = -1; drag = D_NONE; dirty = true; return; }
-    if (c->type == FD::C_GAUGE) { zonesDlg = new FD::ZonesDialog(&scr, "Zones of " + c->name, *c, form.bg); focus = -1; drag = D_NONE; dirty = true; return; }
+    if (FD::HasZones(c->type)) { zonesDlg = new FD::ZonesDialog(&scr, "Zones of " + c->name, *c, form.bg); focus = -1; drag = D_NONE; dirty = true; return; }
     if (c->type == FD::C_MENU) { menuDlg = new FD::MenuEditor(&scr, "Menu items of " + c->name, *c, form, sel, form.bg); focus = -1; drag = D_NONE; dirty = true; return; }
     if (!FD::HasList(c->type)) return;
     itemsDlg = new FD::ItemsDialog(&scr, std::string(c->type == FD::C_TABBAR ? "Tabs of " : "Items of ") + c->name, *c, form, form.bg); focus = -1; drag = D_NONE; dirty = true;
@@ -559,6 +564,7 @@ static void Place(int type, int fx, int fy) {        // fx, fy in form coordinat
     if (type == FD::C_MENU) {                                                    // a small sample menu; ids and names are filled in below
         FD::MenuNode sys; sys.text = "System"; FD::MenuNode a, b, about; a.text = "Reboot"; b.text = "Power off"; about.text = "About"; sys.kids = { a, b }; c.menu = { sys, about };
     }
+    if (type == FD::C_DIAL) FD::ApplyDialPreset(c, 0);                           // a circular gauge to start with (the Preset row changes it)
     if (type == FD::C_GAUGE) {                                                   // a sample: green / yellow / red bands and a value, so a new gauge shows something
         c.zones = { { 0, 60, 0x07E0 }, { 60, 85, 0xFFE0 }, { 85, 100, 0xF800 } }; FD::ExtraSet(c, *FD::FindExtra(FD::C_GAUGE, "value"), "42");
     }
@@ -637,9 +643,9 @@ static void ExportForm(const std::string& dir) {
     if (dir.empty()) FixOutDir();
     FD::GenResult r = FD::WriteDesigner(form, dir.empty() ? form.outDir : dir);
     if (!r.ok) { Status("not exported: %s", r.error.c_str()); return; }
-    FD::UserResult u = FD::WriteUserFile(form, form.outDir);                    // <Form>.h: an existing one is copied aside, then replaced
+    FD::UserResult u = FD::WriteUserFile(form, form.outDir);                    // <Form>.h: an existing one is left alone, the new code goes to <Form>.<date-time>.h
     if (!SaveForm()) return;
-    std::string note = !u.ok ? "  (" + u.error + ")" : u.created ? "  + created " + FD::UserFileName(form) : "  (" + FD::UserFileName(form) + " replaced" + (u.backup.empty() ? "" : ", old copy " + std::filesystem::path(u.backup).filename().string()) + ")";
+    std::string note = !u.ok ? "  (" + u.error + ")" : u.created ? "  + created " + FD::UserFileName(form) : "  (" + FD::UserFileName(form) + " kept, new code in " + std::filesystem::path(u.alt).filename().string() + ")";
     if (u.ok && !u.missing.empty()) { note += "; add to it: " + u.missing[0]; if (u.missing.size() > 1) note += " +" + std::to_string(u.missing.size() - 1) + " more"; }
     Status("%s %s%s", r.unchanged ? "up to date:" : "exported", r.path.c_str(), note.c_str());
 }
@@ -672,8 +678,16 @@ static void Reveal(int i) { fields[i].EnsureVisible(MeasureText, RowFieldW(field
 static const int VIEW_W = 116;      // the design-view button: All -> each control group -> All ...
 static const int ZSPIN_X = 770, ZSPIN_W = 96, ZFIT_X = 874, ZFIT_W = 50, ZONE_X = 930, ZONE_W = 50, ZROW_Y = 59;
 static SuperSpinBox* zoomSpin = nullptr;
-// The View button follows the "320 x 240  Grid 8" text (two spaces apart, like the gap inside that text), so it never overlaps it, whatever the numbers.
-static int ViewX() { char b[64]; snprintf(b, sizeof b, "%d x %d  Grid %d", form.w, form.h, grid); scr.setFont(&lgfx::fonts::Font2); return 430 + (int)scr.textWidth(b) + 2 * (int)scr.textWidth(" "); }
+// The Grid and View buttons follow the "320x240" text, so they never overlap it, whatever the numbers.
+static const int GRID_W = 70;       // the grid button ("Grid 8": the same as the G key)
+static int GridX() { char b[64]; snprintf(b, sizeof b, "%dx%d", form.w, form.h); scr.setFont(&lgfx::fonts::Font2); return 430 + (int)scr.textWidth(b) + 8; }
+static int ViewX() { return GridX() + GRID_W + 8; }
+// the Open / Save / Export buttons, centred over the design surface (x 310 .. 990) in the title bar
+static const int FILE_BTN_W = 72, FILE_BTN_GAP = 8;
+static int FileBtnX(int k) { return 650 - (3 * FILE_BTN_W + 2 * FILE_BTN_GAP) / 2 + k * (FILE_BTN_W + FILE_BTN_GAP); }
+static int FileBtnH() { static int h = 0; if (!h) { SuperPushButton p(&scr, 0, 0, 40, &lgfx::fonts::Font2, "Open"); p.SetPadding(1); h = p.GetHeight(); } return h; }
+static int FileBtnY() { return (44 - FileBtnH()) / 2; }
+static void CycleGrid() { grid = grid == 1 ? 4 : grid == 4 ? 8 : grid == 8 ? 16 : 1; Status("grid %d", grid); }
 static int ZRowH() { return zoomSpin ? zoomSpin->GetHeight() : 24; }
 // The View / Fit / 1:1 buttons are compact (padding 1): shorter than the zoom spin box beside them and centred on its row.
 static int RowBtnH() { static int h = 0; if (!h) { SuperPushButton p(&scr, 0, 0, 40, &lgfx::fonts::Font2, "Fit"); p.SetPadding(1); h = p.GetHeight(); } return h; }
@@ -736,8 +750,12 @@ static void Render() {
     scr.fillRect(0, 0, FD::WIN_W, 44, C_PANEL); scr.drawFastHLine(0, 44, FD::WIN_W, C_LINE);
     scr.setTextColor(0xFFFF); scr.drawString("SuperGUI Form Designer", 10, 14);
     { std::string fn = FileKnown() ? std::filesystem::path(FormPath()).filename().string() : "(not saved yet)"; scr.setTextColor(C_ACCENT); scr.drawString(fn.c_str(), 190, 14); }
-    if (!status.empty() && SDL_GetTicks() - statusAt < 6000) { scr.setTextColor(C_YELLOW); scr.drawString(status.c_str(), 380, 14); }
-    else scr.setTextColor(0x8410), scr.drawString("Ctrl/Cmd+S save  O open  X export   G grid  + - 0 F zoom  Del remove", 380, 14);
+    { static const char* fl[3] = { "Open", "Save", "Export" };
+      for (int k = 0; k < 3; ++k) { SuperPushButton b(&scr, FileBtnX(k), FileBtnY(), FILE_BTN_W, &lgfx::fonts::Font2, fl[k]); b.SetPadding(1); b.Push(); } }
+    scr.setClipRect(FileBtnX(2) + FILE_BTN_W + 12, 0, FD::WIN_W - (FileBtnX(2) + FILE_BTN_W + 12) - 6, 44);          // the status line sits right of the buttons
+    if (!status.empty() && SDL_GetTicks() - statusAt < 6000) { scr.setTextColor(C_YELLOW); scr.drawString(status.c_str(), FileBtnX(2) + FILE_BTN_W + 16, 14); }
+    else scr.setTextColor(0x8410), scr.drawString("G grid   + - 0 F zoom   Del remove   ? help", FileBtnX(2) + FILE_BTN_W + 16, 14);
+    scr.clearClipRect();
 
     // toolbox
     Frame(10, 56, 290, 754, "Toolbox");
@@ -767,12 +785,12 @@ static void Render() {
     // design surface
     Frame(310, 56, 680, 754, "Design Surface");
     char b[160];
-    snprintf(b, sizeof b, "%d x %d  Grid %d", form.w, form.h, grid);
+    snprintf(b, sizeof b, "%dx%d", form.w, form.h);
     scr.setTextColor(0x8410); scr.drawString(b, 430, 62);
+    { char gl[16]; snprintf(gl, sizeof gl, "Grid %d", grid); DrawRowBtn(GridX(), GRID_W, gl); }
     if (!viewGroup.empty() && !form.IsGroupName(viewGroup)) viewGroup.clear();                // the view group disappeared (no control uses it any more)
     { std::string vl = "View: " + (viewGroup.empty() ? std::string("All") : viewGroup); if (vl.size() > 14) vl = vl.substr(0, 13) + "~";
       DrawRowBtn(ViewX(), VIEW_W, vl, viewGroup.empty() ? 0xFFFF : C_YELLOW); }
-    scr.setTextColor(0xFFFF); scr.drawString("Zoom", ZSPIN_X - 50, 62);
     zoomSpin->Push();
     DrawRowBtn(ZFIT_X, ZFIT_W, "Fit"); DrawRowBtn(ZONE_X, ZONE_W, "1:1");
     scr.setClipRect(VX, VY, VW, VH);
@@ -945,6 +963,11 @@ static void Handle(const InputEvent& e) {
             break;
         }
         if (e.button != SDL_BUTTON_LEFT) break;
+        if (e.y < 44) {                                                        // the Open / Save / Export buttons in the title bar
+            for (int k = 0; k < 3; ++k) if (InRect(e.x, e.y, FileBtnX(k), FileBtnY(), FILE_BTN_W, FileBtnH())) { SetFocus(-1); OpenFileDialog(k == 0 ? FP_OPEN : k == 1 ? FP_SAVE : FP_EXPORT); break; }
+            break;
+        }
+        if (InRect(e.x, e.y, GridX(), RowBtnY(), GRID_W, RowBtnH())) { SetFocus(-1); CycleGrid(); dirty = true; break; }
         if (InRect(e.x, e.y, ViewX(), RowBtnY(), VIEW_W, RowBtnH())) {         // the design view: All -> each control group in turn -> All
             SetFocus(-1); std::vector<std::string> gs = form.UsedGroups(); size_t at = 0;
             for (size_t k = 0; k < gs.size(); ++k) if (gs[k] == viewGroup) at = k + 1;
@@ -1042,7 +1065,7 @@ static void Handle(const InputEvent& e) {
         case SDLK_MINUS: case SDLK_KP_MINUS: ZoomCentre(zoom - ZOOM_STEP); break;
         case SDLK_0:     ZoomCentre(100); break;
         case SDLK_f:     ZoomFit(); break;
-        case SDLK_g:     grid = grid == 1 ? 4 : grid == 4 ? 8 : grid == 8 ? 16 : 1; Status("grid %d", grid); break;
+        case SDLK_g:     CycleGrid(); break;
         case SDLK_TAB:   if (!form.items.empty()) { int n = (int)form.items.size(); Select(sel < 0 ? (shift ? n - 1 : 0) : (sel + (shift ? n - 1 : 1)) % n); } break;
         default: break;
         }
@@ -1372,6 +1395,7 @@ static void SelfTest() {
         form.items.push_back([] { DControl c; c.type = C_RADIO; c.name = "modeA"; c.text = "A"; c.x = 16; c.y = 128; c.w = 140; return c; }());
         form.items.push_back([] { DControl c; c.type = C_PROGRESS; c.name = "prog"; c.x = 16; c.y = 176; c.w = 200; return c; }());
         gen = GenerateDesigner(form);
+        Check(has("SuperButton* btnB, SuperTouch* touch = nullptr)") && has("if (touch) Form.SetTouch(touch);"), "generator: the optional touch argument (nullptr by default) goes to the form");
         Check(has("title(dst, 16, 8, 200, &lgfx::fonts::Font2, \"Say \\\"hi\\\" \\\\ now\")"), "generator: constructor arguments, text escaped for C++");
         Check(has("okBtn(dst, 16, 48, 80, &lgfx::fonts::FreeSansBold12pt7b, \"OK\")") && has("prog(dst, 16, 176, 200, &lgfx::fonts::Font2)"), "generator: the font by its lgfx name; a progress bar has no text argument");
         Check(has("title.ColFg = 0x07FF;") && has("title.SetBorderStyle(SuperControl::BORDER_SLEEK);") && has("title.SetPadding(4);") && has("title.SetAlign(SuperControl::ALIGN_CENTER);"), "generator: overrides are written");
@@ -1517,7 +1541,7 @@ static void SelfTest() {
         { DControl c; c.type = C_LABEL; c.name = "title"; form.items.push_back(c); }
         std::string uf = GenerateUserFile(form);
         auto uhas = [&](const char* x) { return uf.find(x) != std::string::npos; };
-        Check(uhas("#include \"Demo.designer.h\"") && uhas("class Demo : public DemoBase {") && uhas("Demo(lgfx::LovyanGFX* dst, SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB) : DemoBase(dst, enc, btnA, btnB)"), "user file: includes the designer header and derives from the Base with the same constructor");
+        Check(uhas("#include \"Demo.designer.h\"") && uhas("class Demo : public DemoBase {") && uhas("Demo(lgfx::LovyanGFX* dst, SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB, SuperTouch* touch = nullptr) : DemoBase(dst, enc, btnA, btnB, touch)") && uhas("ui(&lcd, &Enc, &BtnA, &BtnB, &touch)"), "user file: includes the designer header and derives from the Base with the same constructor, plus the optional touch");
         Check(uhas("void okBtn_Click() override {") && uhas("void wifi_Change() override {") && !uhas("title_") && uhas("wifi.GetChecked()"), "user file: one override stub per handler (none for labels)");
         Check(uhas("never changes it again") && uhas("ui.Show();") && uhas("ui.Service();") && uhas("#pragma once"), "user file: says it is yours and how to use it in a sketch");
         Check(GenerateUserFile(form) == uf, "user file: deterministic");
@@ -1528,19 +1552,19 @@ static void SelfTest() {
         { FILE* f = fopen((udir + "/Demo.h").c_str(), "ab"); fputs("// MY OWN CODE\n", f); fclose(f); }
         ur = WriteUserFile(form, udir);
         { std::ifstream in(udir + "/Demo.h", std::ios::binary); std::stringstream ss; ss << in.rdbuf();
-          Check(ur.ok && !ur.created && ss.str() == uf, "user file: an existing file is replaced by the new one (the old one is kept as the backup)"); }
-        { std::string bn = std::filesystem::path(ur.backup).filename().string(); std::ifstream in(ur.backup, std::ios::binary); std::stringstream ss; ss << in.rdbuf();
-          bool shape = bn.size() == std::string("Demo.2026_11_13_09_30_00.h.txt").size() && bn.substr(0, 5) == "Demo." && bn.substr(bn.size() - 6) == ".h.txt" && bn[9] == '_' && bn[12] == '_' && bn[15] == '_' && bn[18] == '_' && bn[21] == '_';
-          Check(!ur.backup.empty() && shape && ss.str() == uf + "// MY OWN CODE\n", "export: an existing user file is copied to <Form>.yyyy_mm_dd_hh_mm_ss.h.txt (identical copy)");
-          Check(ur.backup.find(udir) == 0 && std::filesystem::exists(udir + "/Demo.h", ufe), "export: the backup is next to the file and the file itself stays"); }
-        { std::filesystem::remove_all(udir + "_new", ufe); std::filesystem::create_directories(udir + "_new", ufe); UserResult fresh = WriteUserFile(form, udir + "_new"); Check(fresh.created && fresh.backup.empty(), "export: a file that was just created needs no copy"); std::filesystem::remove_all(udir + "_new", ufe); }
+          Check(ur.ok && !ur.created && ss.str() == uf + "// MY OWN CODE\n", "export: an existing user file is left exactly as it is"); }
+        { std::string bn = std::filesystem::path(ur.alt).filename().string(); std::ifstream in(ur.alt, std::ios::binary); std::stringstream ss; ss << in.rdbuf();
+          bool shape = bn.size() == std::string("Demo.2026_11_13_09_30_00.h").size() && bn.substr(0, 5) == "Demo." && bn.substr(bn.size() - 2) == ".h" && bn[9] == '_' && bn[12] == '_' && bn[15] == '_' && bn[18] == '_' && bn[21] == '_';
+          Check(!ur.alt.empty() && ur.path == ur.alt && shape && ss.str() == uf, "export: the new code goes to <Form>.yyyy_mm_dd_hh_mm_ss.h");
+          Check(ur.alt.find(udir) == 0 && std::filesystem::exists(udir + "/Demo.h", ufe), "export: the new file is next to the user's file"); }
+        { std::filesystem::remove_all(udir + "_new", ufe); std::filesystem::create_directories(udir + "_new", ufe); UserResult fresh = WriteUserFile(form, udir + "_new"); Check(fresh.created && fresh.alt.empty(), "export: a file that was just created needs no copy"); std::filesystem::remove_all(udir + "_new", ufe); }
         { DControl c; c.type = C_RADIO; c.name = "modeA"; form.items.push_back(c); }
         { DControl c; c.type = C_PUSHBUTTON; c.name = "cancelBtn"; form.items.push_back(c); }
         ur = WriteUserFile(form, udir);
-        { std::ifstream in(udir + "/Demo.h", std::ios::binary); std::stringstream ss; ss << in.rdbuf(); Check(ur.ok && ss.str() == GenerateUserFile(form) && ss.str().find("modeA_Change") != std::string::npos, "user file: controls added later appear in the replaced file"); }
+        { std::ifstream in(ur.path, std::ios::binary); std::stringstream ss; ss << in.rdbuf(); Check(ur.ok && ss.str() == GenerateUserFile(form) && ss.str().find("modeA_Change") != std::string::npos, "user file: controls added later appear in the new file"); }
         ur = WriteUserFile(form, udir + "/nope"); Check(!ur.ok && !ur.error.empty(), "user file: a missing folder is an error");
         setenv("FD_FORM", (udir + "/demo.json").c_str(), 1); form.outDir = udir; ExportForm("");
-        Check(std::filesystem::exists(udir + "/Demo.designer.h", ufe) && std::filesystem::exists(udir + "/Demo.h", ufe) && status.find("replaced") != std::string::npos, "export: Ctrl+X writes both files and the status says the user file was replaced");
+        Check(std::filesystem::exists(udir + "/Demo.designer.h", ufe) && std::filesystem::exists(udir + "/Demo.h", ufe) && status.find("kept, new code in Demo.") != std::string::npos, "export: Ctrl+X writes both files and the status says the old user file was kept");
         std::filesystem::remove(udir + "/Demo.h", ufe); ExportForm("");
         Check(std::filesystem::exists(udir + "/Demo.h", ufe) && status.find("created Demo.h") != std::string::npos, "designer: a deleted user file is created again");
         unsetenv("FD_FORM"); std::filesystem::remove_all(udir, ufe); form.Clear(); FixOutDir();
@@ -1662,8 +1686,8 @@ static void SelfTest() {
         }
         // ---- chunk 1: spin box and slider, the property schema, the label, the scrolling panel ----
         form.Clear(); FixOutDir(); sel = -1; BuildFields(); form.name = "Ctl";
-        Check(C_COUNT == 20 && std::string(Info(C_SPINBOX).key) == "SuperSpinBox" && std::string(Info(C_SLIDER).key) == "SuperSlider" && Info(C_SPINBOX).editable && !Info(C_PUSHBUTTON).editable, "chunk 1: the spin box and slider exist and are editable controls");
-        Check(ExtraCount(C_SPINBOX) == 8 + N_LABEL_EXTRAS && ExtraCount(C_SLIDER) == 5 + N_LABEL_EXTRAS && ExtraCount(C_LABEL) == 5 && ExtraCount(C_PROGRESS) == 3 + N_LABEL_EXTRAS, "chunk 1: a control has its own extras plus the label group (SuperLabel has only the rich text options: no label group)");
+        Check(C_COUNT == 21 && std::string(Info(C_SPINBOX).key) == "SuperSpinBox" && std::string(Info(C_SLIDER).key) == "SuperSlider" && Info(C_SPINBOX).editable && !Info(C_PUSHBUTTON).editable, "chunk 1: the spin box and slider exist and are editable controls");
+        Check(ExtraCount(C_SPINBOX) == 8 + N_LABEL_EXTRAS + N_COMMON_EXTRAS && ExtraCount(C_SLIDER) == 5 + N_LABEL_EXTRAS + N_COMMON_EXTRAS && ExtraCount(C_LABEL) == 5 + N_COMMON_EXTRAS && ExtraCount(C_PROGRESS) == 3 + N_LABEL_EXTRAS + N_COMMON_EXTRAS, "chunk 1: a control has its own extras plus the label group (SuperLabel has only the rich text options: no label group)");
         { DControl d; d.type = C_SPINBOX; const ExtraDef& mn = *FindExtra(C_SPINBOX, "min");
           Check(ExtraSet(d, mn, "-5") && XInt(d, "min") == -5 && d.extra.count("min") && ExtraSet(d, mn, "0") && !d.extra.count("min"), "extras: a value equal to the default is not stored");
           Check(ExtraSet(d, *FindExtra(C_SPINBOX, "step"), "0") && XInt(d, "step") == 1 && !XSet(d, "step"), "extras: numbers are clamped to their limits (step >= 1)");
@@ -1714,7 +1738,7 @@ static void SelfTest() {
         // generated code
         { std::string g = GenerateDesigner(form);
           auto has2 = [&](const char* x) { return g.find(x) != std::string::npos; };
-          Check(has2("#include <SuperSpinBox.h>") && has2("#include <SuperSlider.h>") && has2("CtlBase(lgfx::LovyanGFX* dst, SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB)"), "codegen: editable controls bring their headers and the constructor takes both buttons");
+          Check(has2("#include <SuperSpinBox.h>") && has2("#include <SuperSlider.h>") && has2("CtlBase(lgfx::LovyanGFX* dst, SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB, SuperTouch* touch = nullptr)"), "codegen: editable controls bring their headers and the constructor takes both buttons");
           Check(has2("sp1(dst, 8, 8, 100, &lgfx::fonts::Font2, enc, btnA, btnB)") && has2("sld1(dst, 8, 80, 160, &lgfx::fonts::Font2, enc, btnA, btnB)"), "codegen: spin box and slider are built with the encoder and the buttons (and no text argument)");
           Check(has2("sp1.SetRange(-20, 50);") && has2("sp1.SetDecimals(1);") && has2("sp1.SetPrefix(\"a\\\"b\\\\c\");") && has2("sp1.SetSuffix(\" %\");") && has2("sp1.SetValue(20);") && !has2("sp1.SetStep") && !has2("sp1.SetWrap"), "codegen: only the spin box extras that differ from the defaults, escaped for C++");
           Check(g.find("sp1.SetRange") < g.find("sp1.SetValue"), "codegen: the range comes before the value (SetValue clamps)");
@@ -1845,7 +1869,7 @@ static void SelfTest() {
         form.Clear(); FixOutDir(); sel = -1; BuildFields();
         // ---- check box / radio button: no label group, an initial state ----
         form.Clear(); FixOutDir(); sel = -1; BuildFields(); form.name = "Chk";
-        Check(ExtraCount(C_CHECKBOX) == 1 && ExtraCount(C_RADIO) == 1 && ExtraCount(C_PUSHBUTTON) == 0 && !Info(C_CHECKBOX).hasLabel && !Info(C_RADIO).hasLabel && !Info(C_PUSHBUTTON).hasLabel, "controls with a caption of their own (check box, radio button, push button) have no label group");
+        Check(ExtraCount(C_CHECKBOX) == 1 + N_COMMON_EXTRAS && ExtraCount(C_RADIO) == 1 + N_COMMON_EXTRAS && ExtraCount(C_PUSHBUTTON) == 0 + N_COMMON_EXTRAS && !Info(C_CHECKBOX).hasLabel && !Info(C_RADIO).hasLabel && !Info(C_PUSHBUTTON).hasLabel, "controls with a caption of their own (check box, radio button, push button) have no label group");
         Place(C_CHECKBOX, 8, 8); Place(C_RADIO, 8, 40); Place(C_RADIO, 8, 72); Place(C_RADIO, 8, 104); Place(C_PUSHBUTTON, 8, 136);
         auto CX = [&](const char* key) { for (int i = 0; i < nFields; ++i) if (const ExtraDef* d = ExtraOf(fieldProp[i])) if (std::string(d->key) == key) return i; return -1; };
         auto CS = [&](const char* key, int seg) { int r = CX(key); EnsureRowVisible(r); Click(FIELD_X + seg * (FIELD_W / 2) + 6, FieldY(r) + 5); };
@@ -1994,7 +2018,7 @@ static void SelfTest() {
         form.Clear(); FixOutDir(); sel = -1; BuildFields();
         // ---- chunk 3b: the menu ----
         {
-            Check(std::string(Info(C_MENU).key) == "SuperMenu" && ExtraCount(C_MENU) == 6 + N_LABEL_EXTRAS && !HasList(C_MENU), "menu: the type exists (rows, wrap, back row, row padding, ID prefix, preview sub-menu + the label group)");
+            Check(std::string(Info(C_MENU).key) == "SuperMenu" && ExtraCount(C_MENU) == 6 + N_LABEL_EXTRAS + N_COMMON_EXTRAS && !HasList(C_MENU), "menu: the type exists (rows, wrap, back row, row padding, ID prefix, preview sub-menu + the label group)");
             Check(MenuUpper("Power off") == "POWER_OFF" && MenuUpper("  a--b  ") == "A_B" && MenuUpper("!!!") == "" && MenuUpper("Save as...") == "SAVE_AS", "menu: item text becomes an upper-case name part");
             Check(AutoItemId("MNU_", "Power off", [](const std::string&) { return false; }) == "MNU_POWER_OFF" && AutoItemId("MNU_", "!!!", [](const std::string&) { return false; }) == "MNU_ITEM", "menu: automatic item ids are <prefix><TEXT> (MNU_ITEM when the text has no letters)");
             Check(AutoItemId("MNU_", "A", [](const std::string& n) { return n == "MNU_A" || n == "MNU_A_2"; }) == "MNU_A_3", "menu: a taken automatic name gets _2, _3 ...");
@@ -2247,7 +2271,7 @@ static void SelfTest() {
             Check(ExtraSet(d, mn, "-20.5") && XFloat(d, "min") == -20.5 && XStr(d, "min") == "-20.5" && ExtraSet(d, mn, "0.0") && !d.extra.count("min"), "decimals: a decimal extra is stored canonically, and the default is not stored");
             Check(!ExtraSet(d, mn, "") && !ExtraSet(d, mn, "-") && !ExtraSet(d, mn, ".") && !ExtraSet(d, mn, "1.2.3") && !ExtraSet(d, mn, "12x") && ExtraSet(d, mn, "9999999") && XFloat(d, "min") == 999999, "decimals: not-a-number text is refused, an out-of-range number is clamped");
             JV v; std::string jsrc = "[1, 2.5, -0.25, 1e2, 7]", je; JsonParser jp(jsrc); Check(jp.Parse(v, je) && v.a.size() == 5 && v.a[1].d == 2.5 && v.a[2].d == -0.25 && v.a[3].d == 100 && v.a[0].n == 1 && v.a[1].n == 2, "decimals: the JSON reader reads decimal numbers (the integer part stays in n)");
-            Check(Info(C_GAUGE).extras && ExtraCount(C_GAUGE) == 22 + N_LABEL_EXTRAS && ExtraCount(C_GRAPH) == 10 + N_LABEL_EXTRAS && ExtraCount(C_USERDRAW) == 4 + N_LABEL_EXTRAS && !Info(C_GAUGE).editable && !Info(C_GRAPH).editable && !Info(C_USERDRAW).editable, "chunk 4: three display types with their extras (not editable: no encoder, no buttons)");
+            Check(Info(C_GAUGE).extras && ExtraCount(C_GAUGE) == 23 + N_LABEL_EXTRAS + N_COMMON_EXTRAS && ExtraCount(C_GRAPH) == 10 + N_LABEL_EXTRAS + N_COMMON_EXTRAS && ExtraCount(C_USERDRAW) == 4 + N_LABEL_EXTRAS + N_COMMON_EXTRAS && !Info(C_GAUGE).editable && !Info(C_GRAPH).editable && !Info(C_USERDRAW).editable, "chunk 4: three display types with their extras (not editable: no encoder, no buttons)");
         }
         form.Clear(); FixOutDir(); sel = -1; BuildFields(); form.name = "Ch4";
         Place(C_GAUGE, 8, 8); Place(C_GRAPH, 8, 120); Place(C_USERDRAW, 8, 180);
@@ -2329,26 +2353,114 @@ static void SelfTest() {
         form.items[0].zones = { { 0, 60, 0x07E0 }, { 60, 85.5, 0xFFE0 } };
         { DControl& g0 = form.items[0]; g0.extra.clear(); ExtraSet(g0, *FindExtra(C_GAUGE, "min"), "-20"); ExtraSet(g0, *FindExtra(C_GAUGE, "max"), "120.5"); ExtraSet(g0, *FindExtra(C_GAUGE, "value"), "55.5"); ExtraSet(g0, *FindExtra(C_GAUGE, "sweepStart"), "-135"); ExtraSet(g0, *FindExtra(C_GAUGE, "sweepEnd"), "135");
           ExtraSet(g0, *FindExtra(C_GAUGE, "majorTicks"), "6"); ExtraSet(g0, *FindExtra(C_GAUGE, "decimals"), "1"); ExtraSet(g0, *FindExtra(C_GAUGE, "unit"), " C"); ExtraSet(g0, *FindExtra(C_GAUGE, "tickLabels"), "false"); ExtraSet(g0, *FindExtra(C_GAUGE, "showValue"), "false");
-          ExtraSet(g0, *FindExtra(C_GAUGE, "needle"), "1"); ExtraSet(g0, *FindExtra(C_GAUGE, "needleByZone"), "false"); ExtraSet(g0, *FindExtra(C_GAUGE, "smoothing"), "false"); ExtraSet(g0, *FindExtra(C_GAUGE, "trackColor"), "0x1082"); ExtraSet(g0, *FindExtra(C_GAUGE, "minMaxMs"), "3000"); ExtraSet(g0, *FindExtra(C_GAUGE, "minMaxDeg"), "5"); ExtraSet(g0, *FindExtra(C_GAUGE, "bodyHeight"), "120"); }
+          ExtraSet(g0, *FindExtra(C_GAUGE, "needle"), "1"); ExtraSet(g0, *FindExtra(C_GAUGE, "needleByZone"), "false"); ExtraSet(g0, *FindExtra(C_GAUGE, "valueInHub"), "false"); ExtraSet(g0, *FindExtra(C_GAUGE, "smoothing"), "false"); ExtraSet(g0, *FindExtra(C_GAUGE, "trackColor"), "0x1082"); ExtraSet(g0, *FindExtra(C_GAUGE, "minMaxMs"), "3000"); ExtraSet(g0, *FindExtra(C_GAUGE, "minMaxDeg"), "5"); ExtraSet(g0, *FindExtra(C_GAUGE, "bodyHeight"), "120"); }
         { DControl& g1 = form.items[1]; g1.extra.clear(); ExtraSet(g1, *FindExtra(C_GRAPH, "capacity"), "100"); ExtraSet(g1, *FindExtra(C_GRAPH, "autoRange"), "false"); ExtraSet(g1, *FindExtra(C_GRAPH, "rangeMin"), "-5.5"); ExtraSet(g1, *FindExtra(C_GRAPH, "rangeMax"), "5.5"); ExtraSet(g1, *FindExtra(C_GRAPH, "showGrid"), "false"); ExtraSet(g1, *FindExtra(C_GRAPH, "showRange"), "true"); ExtraSet(g1, *FindExtra(C_GRAPH, "lineColor"), "0xF800"); ExtraSet(g1, *FindExtra(C_GRAPH, "preview"), "2"); ExtraSet(g1, *FindExtra(C_GRAPH, "bodyHeight"), "60"); }
         { DControl& g2 = form.items[2]; g2.extra.clear(); ExtraSet(g2, *FindExtra(C_USERDRAW, "persistent"), "true"); ExtraSet(g2, *FindExtra(C_USERDRAW, "autoRedraw"), "50"); ExtraSet(g2, *FindExtra(C_USERDRAW, "touch"), "true"); }
         { std::string g = GenerateDesigner(form); auto h6 = [&](const char* x) { return g.find(x) != std::string::npos; };
           Check(h6("#include <SuperGauge.h>") && h6("#include <SuperGraph.h>") && h6("#include <SuperUserDraw.h>"), "codegen: headers of the display controls");
           Check(h6(("gg1(dst, 8, " + std::to_string(form.items[0].y) + ", ").c_str()) && h6(", 120, &lgfx::fonts::Font2)") && h6(", &lgfx::fonts::Font2, 60)") && h6(", 100, &lgfx::fonts::Font2)"), "codegen: constructors: gauge (.., bodyHeight, font), graph (.., font, bodyHeight), user draw (.., bodyHeight, font)");
-          Check(h6("gg1.SetRange(-20.0f, 120.5f);") && h6("gg1.SetSweep(-135.0f, 135.0f);") && h6("gg1.SetTicks(6, 1);") && h6("gg1.SetFormat(1, \" C\");") && h6("gg1.ShowTickLabels = false;") && h6("gg1.ShowValue = false;") && h6("gg1.Needle = SuperGauge::NEEDLE_LINE;") && h6("gg1.NeedleByZone = false;") && h6("gg1.ColTrack = 0x1082;") && h6("gg1.SetMinMax(3000, 5.0f, 2);") && h6("gg1.SetSmoothing(false);"), "codegen: gauge settings (floats as 12.5f, only what differs from the defaults)");
+          Check(h6("gg1.SetRange(-20.0f, 120.5f);") && h6("gg1.SetSweep(-135.0f, 135.0f);") && h6("gg1.SetTicks(6, 1);") && h6("gg1.SetFormat(1, \" C\");") && h6("gg1.ShowTickLabels = false;") && h6("gg1.ShowValue = false;") && h6("gg1.Needle = SuperGauge::NEEDLE_LINE;") && h6("gg1.NeedleByZone = false;") && h6("gg1.ValueInHub = false;") && h6("gg1.ColTrack = 0x1082;") && h6("gg1.SetMinMax(3000, 5.0f, 2);") && h6("gg1.SetSmoothing(false);"), "codegen: gauge settings (floats as 12.5f, only what differs from the defaults)");
           Check(h6("gg1.AddZone(0.0f, 60.0f, 0x07E0);") && h6("gg1.AddZone(60.0f, 85.5f, 0xFFE0);") && g.find("gg1.AddZone(0.0f") < g.find("gg1.SetValue(55.5f);") && g.find("gg1.SetRange") < g.find("gg1.AddZone"), "codegen: the zones, with the range before them and the value last");
           Check(h6("grf1.SetCapacity(100);") && h6("grf1.SetRange(-5.5f, 5.5f);") && h6("grf1.ShowGrid = false;") && h6("grf1.ShowRange = true;") && h6("grf1.ColLine = 0xF800;") && !h6("preview") && !h6("grf1.ColGrid"), "codegen: graph settings; the preview data is designer only and is not generated");
           Check(h6("ud1.SetPersistent(true);") && h6("ud1.SetAutoRedraw(50);"), "codegen: user draw settings");
           Check(h6("virtual void ud1_Draw(lgfx::LGFX_Sprite* spr, const SuperRect& body) {}") && h6("virtual void ud1_Pointer(const SuperUserPointer& e) {}") && h6("virtual void ud1_Accept() {}"), "codegen: user draw handlers: Draw, and Pointer / Accept because Touch input is on");
           Check(h6("static void ud1_DrawThunk(SuperUserDraw&, lgfx::LGFX_Sprite* s, const SuperRect& r, void* u) { static_cast<Ch4Base*>(u)->ud1_Draw(s, r); }") && h6("static void ud1_PointerThunk(SuperUserDraw&, const SuperUserPointer& e, void* u) { static_cast<Ch4Base*>(u)->ud1_Pointer(e); }"), "codegen: the library callbacks pass their arguments on to the handlers");
           Check(h6("ud1.SetOnDraw(ud1_DrawThunk, this);") && h6("ud1.SetOnPointer(ud1_PointerThunk, this);") && h6("ud1.SetOnAccept(ud1_AcceptThunk, this);"), "codegen: the callbacks are connected");
-          Check(h6("Form.Add(&gg1, false);") && h6("Form.Add(&grf1, false);") && h6("Form.Add(&ud1);") && !h6("gg1_") && !h6("grf1_"), "codegen: gauge and graph are display only (no handlers, not focusable); user draw with touch takes focus");
+          Check(h6("Form.Add(&gg1, false);") && h6("Form.Add(&grf1, false);") && h6("Form.Add(&ud1);") && !h6("gg1_") && !h6("grf1_") && !h6("BeforeDraw"), "codegen: gauge and graph are display only (not focusable, no handlers until BeforeDraw is switched on); user draw with touch takes focus");
+          { DControl& gq = form.items[0]; ExtraSet(gq, *FindExtra(C_GAUGE, "beforeDraw"), "true"); DControl& rq = form.items[1]; ExtraSet(rq, *FindExtra(C_GRAPH, "beforeDraw"), "true");
+            std::string g1p = GenerateDesigner(form); Check(g1p.find("gg1.SetOnBeforeDraw(gg1_BeforeDrawThunk, this);") != std::string::npos && g1p.find("grf1.SetOnBeforeDraw(grf1_BeforeDrawThunk, this);") != std::string::npos && g1p.find("SetPollMs") == std::string::npos, "codegen: BeforeDraw on a gauge and a graph connects the handler (the interval only when it is not 0)");
+            ExtraSet(gq, *FindExtra(C_GAUGE, "pollMs"), "250"); ExtraSet(rq, *FindExtra(C_GRAPH, "pollMs"), "100");
+            std::string g2p = GenerateDesigner(form); Check(g2p.find("gg1.SetPollMs(250);") != std::string::npos && g2p.find("grf1.SetPollMs(100);") != std::string::npos, "codegen: the BeforeDraw interval of a gauge and a graph"); gq.extra.erase("pollMs"); rq.extra.erase("pollMs"); }
           std::string u = GenerateUserFile(form);
           Check(u.find("void ud1_Draw(lgfx::LGFX_Sprite* spr, const SuperRect& body) override {") != std::string::npos && u.find("spr->drawCircle(body.x + body.w / 2") != std::string::npos && u.find("void ud1_Pointer(const SuperUserPointer& e) override {") != std::string::npos, "user file: stubs with the signatures and a drawing example");
           ExtraSet(form.items[2], *FindExtra(C_USERDRAW, "touch"), "false"); std::string g2 = GenerateDesigner(form);
           Check(g2.find("ud1_Draw") != std::string::npos && g2.find("ud1_Pointer") == std::string::npos && g2.find("ud1_Accept") == std::string::npos && g2.find("Form.Add(&ud1, false);") != std::string::npos, "codegen: without touch a user draw control has only the Draw handler and is not focusable");
-          Check(UserFileMissing(form, GenerateUserFile(form)).empty() && HandlerNames(form) == std::vector<std::string>({ "ud1_Draw" }), "user file: the Draw handler counts as a handler"); }
+          Check(UserFileMissing(form, GenerateUserFile(form)).empty() && HandlerNames(form) == std::vector<std::string>({ "gg1_BeforeDraw", "grf1_BeforeDraw", "ud1_Draw" }), "user file: the BeforeDraw and Draw handlers count as handlers"); }
         Check(!ValidName("x_Draw") && !ValidName("x_DrawThunk") && !ValidName("x_Pointer") && !ValidName("x_PointerThunk") && ValidName("drawing"), "names: _Draw and _Pointer handler names are reserved");
+        // ---- dial: preset, rows, code, file ----
+        {
+            form.Clear(); FixOutDir(); sel = -1; BuildFields(); form.name = "Dials";
+            Place(C_DIAL, 8, 8); Select(0);
+            { DControl& d = form.items[0]; Check(d.name == "dl1" && d.zones.size() == 3 && XInt(d, "pointers") == 1 && XFloat(d, "p1Value") == 42 && XInt(d, "wrap") == 0, "dial: a new dial is a circular gauge (three bands, one pointer at 42)"); }
+            { auto dc = MakeControl(&scr, form.items[0], 0, 0); dc->Push(); Check(dc->GetControlType() == SuperControl::ControlType::Dial && dc->GetHeight() == form.items[0].h && form.items[0].h >= 140, "dial: the real SuperDial is drawn, its height is the body plus the frame"); }
+            { int fp = -1; for (int i = 0; i < nFields; ++i) if (fieldProp[i] == P_ZONES) fp = i; Check(fp >= 0, "dial: the property panel has the Zones row"); }
+            auto Pick = [&](const char* key, const char* v) { for (int i = 0; i < nFields; ++i) if (const FD::ExtraDef* d = ExtraOf(fieldProp[i])) if (std::string(d->key) == key) return ApplyProp(fieldProp[i], v); return false; };
+            auto Rows = [&](const char* key) { for (int i = 0; i < nFields; ++i) if (const FD::ExtraDef* d = ExtraOf(fieldProp[i])) if (std::string(d->key) == key) return true; return false; };
+            Check(Rows("p1Value") && !Rows("p2Value") && !Rows("p3Value"), "dial: only the pointers that exist have rows");
+            Check(Pick("pointers", "3") && XInt(form.items[0], "pointers") == 3 && Rows("p2Value") && Rows("p3Style") && nFields < MAX_FIELDS, "dial: three pointers show their rows and still fit the panel");
+            Check(Pick("kind", "1"), "dial: the Preset row accepts Compass");
+            { DControl& d = form.items[0]; Check(XInt(d, "wrap") == 1 && XFloat(d, "max") == 360 && XStr(d, "labels") == "N,NE,E,SE,S,SW,W,NW" && XInt(d, "pointers") == 2 && XBool(d, "p2Face") && d.zones.empty(), "dial: the Compass preset fills the scale, labels, pointers and clears the zones"); }
+            Check(!Rows("p3Value") && Rows("p2Value"), "dial: the rows follow the preset's pointer count");
+            std::string gen = GenerateDesigner(form);
+            auto has = [&](const char* s) { return gen.find(s) != std::string::npos; };
+            Check(has("#include <SuperDial.h>") && has("dl1(dst, 8, 8, 160, 140, &lgfx::fonts::"), "codegen: the dial's header and constructor (dst, x, y, w, bodyHeight, font)");
+            Check(has("dl1.SetWrap(360.0f);") && has("dl1.SetTicks(8, 2);") && has("dl1.SetTickLabels({ \"N\", \"NE\", \"E\", \"SE\", \"S\", \"SW\", \"W\", \"NW\" });") && has("dl1.ShowValue = false;"), "codegen: compass scale, ticks, labels");
+            Check(has("dl1.AddPointer(0.9f, 5, 0xF800, SuperDial::POINTER_TAIL);") && has("dl1.AddPointer(0.6f, 3, 0x07FF, SuperDial::POINTER_LINE, true);") && has("dl1.SetPointerValue(1, 90.0f);") && !has("dl1.SetPointerValue(0,"), "codegen: pointers (the one on the card says true) and only the values that are not at the start");
+            Check(!has("BeforeDraw") && Pick("beforeDraw", "true") && Rows("pollMs"), "dial: BeforeDraw is off until it is switched on (then its interval row appears)");
+            gen = GenerateDesigner(form);
+            Check(!Focusable(form.items[0]) && has("dl1.SetOnBeforeDraw(dl1_BeforeDrawThunk, this);") && has("virtual void dl1_BeforeDraw()") && gen.find("dl1_Accept") == std::string::npos && gen.find("dl1_Change") == std::string::npos, "codegen: a dial is display only (not focusable); its one event is BeforeDraw, connected with SetOnBeforeDraw");
+            Check(!has("dl1.SetPollMs") && Pick("pollMs", "500") && GenerateDesigner(form).find("dl1.SetPollMs(500);") != std::string::npos && Pick("pollMs", "70000") && XInt(form.items[0], "pollMs") == 60000 && Pick("pollMs", "0") && GenerateDesigner(form).find("SetPollMs") == std::string::npos, "dial: the BeforeDraw interval is generated only when it is not 0 (limited to 60000)");
+            { std::string u = GenerateUserFile(form); Check(u.find("void dl1_BeforeDraw() override") != std::string::npos && u.find("dl1.SetPointerValue(0, v)") != std::string::npos, "user file: a stub for the dial's BeforeDraw with the hint"); }
+            Check(Pick("kind", "2") && has("") && GenerateDesigner(form).find("dl1.SetWrap(12.0f);") != std::string::npos && GenerateDesigner(form).find("dl1.SetTicks(12, 4);") != std::string::npos && XInt(form.items[0], "pointers") == 3, "dial: the Clock preset (12 hours, three hands)");
+            Check(Pick("kind", "3") && form.items[0].zones.size() == 3 && form.items[0].zones[2].from == 7 && XStr(form.items[0], "unit") == "k" && GenerateDesigner(form).find("dl1.SetSweep(0.0f, 8.0f, -135.0f, 135.0f);") != std::string::npos, "dial: the Tachometer preset (0..8 over 270 degrees, three bands)");
+            // zones that cross the top of a wrapping scale
+            Check(Pick("kind", "1"), "dial: back to the compass");
+            { DControl& d = form.items[0]; d.zones = { { 300, 40, 0xF800 } };
+              Check(Validate(&scr, d).empty() && ZoneOk(d, d.zones[0]), "dial: on a wrapping scale a zone may cross the top (300 to 40)");
+              d.zones = { { 10, 10, 0xF800 } }; Check(!Validate(&scr, d).empty() && Validate(&scr, d).find("different") != std::string::npos, "dial: ... but it needs two different ends");
+              d.zones = { { 300, 40, 0xF800 } };
+              std::string zg = GenerateDesigner(form); Check(zg.find("dl1.AddZone(300.0f, 40.0f, 0xF800);") != std::string::npos, "codegen: the crossing zone is generated as it is");
+              std::string zj = form.ToJson(), ze; DForm zf; Check(zf.FromJson(zj, ze) && zf.items[0].zones.size() == 1 && zf.items[0].zones[0].from == 300 && zf.items[0].zones[0].to == 40 && zf.ToJson() == zj, "dial: the crossing zone survives the form file");
+              DControl sw = d; ExtraSet(sw, *FindExtra(C_DIAL, "wrap"), "0"); Check(!Validate(&scr, sw).empty() && Validate(&scr, sw).find("wrapping") != std::string::npos, "dial: a sweep scale does not allow it (the reason names the wrapping scale)");
+              auto zc = MakeControl(&scr, d, 0, 0); zc->Push(); Check(zc->GetHeight() > 0, "dial: the crossing zone is drawn");
+              // the zones dialog
+              Select(0); { int zr = -1; for (int i = 0; i < nFields; ++i) if (fieldProp[i] == P_ZONES) zr = i; EnsureRowVisible(zr); Click(FIELD_X + FIELD_W - 30, FieldY(zr) + 5); }
+              auto ZK = [&](SDL_Keycode k, Uint16 m = 0) { InputEvent v; v.type = InputEvent::KEY_DOWN; v.key = k; v.mod = m; Handle(v); };
+              auto ZT = [&](const char* tx) { InputEvent v; v.type = InputEvent::TEXT; strncpy(v.text, tx, sizeof v.text - 1); Handle(v); };
+              auto ZSet = [&](int k, const char* v) { Handle(ev(InputEvent::DOWN, zonesDlg->FieldX(k) + 20, zonesDlg->FieldY() + 5)); Handle(ev(InputEvent::UP, 0, 0)); ZK(SDLK_a, KMOD_LCTRL); ZT(v); };
+              Check(zonesDlg != nullptr && zonesDlg->zones.size() == 1, "dial: the Zones row opens the zones dialog");
+              if (zonesDlg) { ZSet(0, "350"); ZSet(1, "20"); Check(zonesDlg->zones[0].from == 350 && zonesDlg->zones[0].to == 20 && zonesDlg->Message().empty(), "zones dialog: a dial on a wrapping scale accepts From above To");
+                ZSet(1, "350"); Check(zonesDlg->zones[0].to == 20 && zonesDlg->Message().find("different") != std::string::npos, "zones dialog: equal ends are refused with the reason");
+                ZK(SDLK_ESCAPE); ZK(SDLK_ESCAPE); }
+              if (zonesDlg) { ZK(SDLK_ESCAPE); } Check(zonesDlg == nullptr, "zones dialog: closed"); }
+            // validation
+            Check(Pick("kind", "1") && !Pick("min", "5") && XFloat(form.items[0], "min") == 0, "dial: a wrapping scale must start at 0 (refused)");
+            Check(Pick("kind", "3") && !Pick("sweepEnd", "-200") && XInt(form.items[0], "sweepEnd") == 135, "dial: a sweep must end after it starts (refused)");
+            Check(!Pick("valuePointer", "2") && Pick("valuePointer", "0"), "dial: the value pointer must be one of the pointers");
+            // the file
+            { std::string j = form.ToJson(), err; DForm g;
+              Check(g.FromJson(j, err) && g.items.size() == 1 && g.items[0].type == C_DIAL && g.items[0].zones.size() == 3 && XFloat(g.items[0], "p1Value") == 3.5 && g.ToJson() == j, "dial: the form file round-trips (zones, pointers, preset)"); }
+            // all four presets draw something different from the others
+            { std::vector<std::vector<uint16_t>> pics; bool differ = true;
+              for (int k = 0; k < 4; ++k) { Pick("kind", std::to_string(k).c_str()); auto dc = MakeControl(&scr, form.items[0], 0, 0); dc->Push(); std::vector<uint16_t> px; for (int y = 0; y < dc->GetHeight(); y += 3) for (int x = 0; x < dc->GetWidth(); x += 3) px.push_back((uint16_t)scr.readPixel(x, y)); for (auto& o : pics) if (o == px) differ = false; pics.push_back(px); }
+              Check(differ, "dial: the four presets draw four different pictures"); }
+            form.Clear(); sel = -1; BuildFields();
+        }
+        // ---- BeforeDraw on every control type ----
+        {
+            form.Clear(); FixOutDir(); sel = -1; BuildFields(); form.name = "Bd";
+            for (int t = 0; t < C_COUNT; ++t) Place(t, 8, 8);
+            bool all = true, none = true;
+            for (const DControl& c : form.items) { if (!FindExtra(c.type, "beforeDraw") || !FindExtra(c.type, "pollMs") || XBool(c, "beforeDraw")) all = false; }
+            std::string g0 = GenerateDesigner(form); none = g0.find("BeforeDraw") == std::string::npos;
+            Check(all && none, "BeforeDraw: every control type has the BeforeDraw row, off by default (no handler is generated)");
+            for (DControl& c : form.items) ExtraSet(c, *FindExtra(c.type, "beforeDraw"), "true");
+            std::string g1 = GenerateDesigner(form); bool every = true;
+            for (const DControl& c : form.items) if (g1.find(c.name + ".SetOnBeforeDraw(" + c.name + "_BeforeDrawThunk, this);") == std::string::npos || g1.find("virtual void " + c.name + "_BeforeDraw()") == std::string::npos) { every = false; Status("missing %s", c.name.c_str()); }
+            Check(every, "BeforeDraw: switched on, every control type gets its handler and the connection");
+            std::string u = GenerateUserFile(form);
+            Check(u.find("void lbl1_BeforeDraw() override") != std::string::npos && u.find("lbl1.SetText(\"...\")") != std::string::npos && u.find("pb1.SetValue(percent)") != std::string::npos && u.find("ck1.SetChecked(state)") != std::string::npos, "BeforeDraw: the stub's hint shows a setter that fits the control");
+            Check(UserFileMissing(form, u).empty(), "BeforeDraw: the user file covers every handler");
+            Select(0); BuildFields();
+            { auto Rows = [&](const char* key) { for (int i = 0; i < nFields; ++i) if (const FD::ExtraDef* d = ExtraOf(fieldProp[i])) if (std::string(d->key) == key) return true; return false; };
+              Check(Rows("beforeDraw") && Rows("pollMs"), "BeforeDraw: the property panel shows both rows when it is on");
+              ExtraSet(form.items[0], *FindExtra(C_LABEL, "beforeDraw"), "false"); BuildFields();
+              Check(Rows("beforeDraw") && !Rows("pollMs"), "BeforeDraw: the interval row is hidden when it is off"); }
+            { int worst = 0; for (int t = 0; t < C_COUNT; ++t) { form.Clear(); Place(t, 8, 8); ExtraSet(form.items[0], *FindExtra(t, "beforeDraw"), "true"); Select(0); worst = std::max(worst, nFields); } Check(worst < MAX_FIELDS, "BeforeDraw: the panel still holds every control's rows"); }
+            { std::string j, err; form.Clear(); Place(C_LABEL, 8, 8); ExtraSet(form.items[0], *FindExtra(C_LABEL, "beforeDraw"), "true"); ExtraSet(form.items[0], *FindExtra(C_LABEL, "pollMs"), "500"); j = form.ToJson(); DForm g;
+              Check(g.FromJson(j, err) && XBool(g.items[0], "beforeDraw") && XInt(g.items[0], "pollMs") == 500 && g.ToJson() == j, "BeforeDraw: saved in the form file and loaded back"); }
+            form.Clear(); sel = -1; BuildFields();
+        }
         // ---- chunk 5: colour picker, message boxes ----
         {
             form.Clear(); Place(C_COLORPICKER, 8, 8); Check(form.items.size() == 1 && form.items[0].type == C_COLORPICKER && ControlHeight(&scr, form.items[0]) > 0, "chunk 5: a colour picker is placed and drawn");
@@ -2465,14 +2577,14 @@ static void SelfTest() {
         }
         // ---- default names: <prefix><number> ----
         {
-            const char* want[C_COUNT] = { "lbl", "cmd", "ck", "rb", "pb", "sp", "sld", "txt", "inp", "tm", "dt", "lb", "cb", "tab", "mnu", "gg", "grf", "ud", "cp", "rtb" };
+            const char* want[C_COUNT] = { "lbl", "cmd", "ck", "rb", "pb", "sp", "sld", "txt", "inp", "tm", "dt", "lb", "cb", "tab", "mnu", "gg", "grf", "ud", "cp", "rtb", "dl" };
             bool ok = true; for (int t = 0; t < C_COUNT; ++t) if (std::string(Info(t).prefix) != want[t]) ok = false;
-            Check(ok && C_COUNT == 20, "names: every control type has its default prefix (lbl cmd ck rb pb sp sld txt inp tm dt lb cb tab mnu gg grf ud cp rtb)");
+            Check(ok && C_COUNT == 21, "names: every control type has its default prefix (lbl cmd ck rb pb sp sld txt inp tm dt lb cb tab mnu gg grf ud cp rtb dl)");
             form.Clear(); for (int t = 0; t < C_COUNT; ++t) Place(t, 8, 8);
             std::set<std::string> seen; bool uniq = true, valid = true; for (auto& c : form.items) { if (!seen.insert(c.name).second) uniq = false; if (!ValidName(c.name)) valid = false; }
             Check(uniq && valid && form.items[C_LABEL].name == "lbl1" && form.items[C_PUSHBUTTON].name == "cmd1" && form.items[C_RICHTEXT].name == "rtb1" && form.items[C_COLORPICKER].name == "cp1", "names: placing one of each gives lbl1, cmd1 ... rtb1, all unique and valid");
-            Place(C_PUSHBUTTON, 8, 8); Place(C_PUSHBUTTON, 8, 8); Check(form.items[20].name == "cmd2" && form.items[21].name == "cmd3", "names: the next ones count up (cmd2, cmd3)");
-            form.items.erase(form.items.begin() + 20); Place(C_PUSHBUTTON, 8, 8); Check(form.items.back().name == "cmd2", "names: the smallest free number is reused after a delete");
+            Place(C_PUSHBUTTON, 8, 8); Place(C_PUSHBUTTON, 8, 8); Check(form.items[21].name == "cmd2" && form.items[22].name == "cmd3", "names: the next ones count up (cmd2, cmd3)");
+            form.items.erase(form.items.begin() + 21); Place(C_PUSHBUTTON, 8, 8); Check(form.items.back().name == "cmd2", "names: the smallest free number is reused after a delete");
             form.Clear(); Place(C_PUSHBUTTON, 8, 8); form.items[0].name = "cmd2"; Place(C_PUSHBUTTON, 8, 8); Check(form.items[1].name == "cmd1", "names: a number already taken by a hand-picked name is skipped");
             form.Clear(); Place(C_RADIO, 8, 8); Place(C_RADIO, 8, 40); Check(form.items[0].name == "rb1" && form.items[1].name == "rb2" && form.items[0].group == "rGrp1" && form.items[1].group == "rGrp1", "names: radio buttons are rb1, rb2 and share the group rGrp1");
             Check(form.UniqueGroupName() == "rGrp2" && form.UniqueCtlGroupName() == "cGrp1", "names: the next radio group is rGrp2 and the next control group cGrp1");
@@ -2482,7 +2594,7 @@ static void SelfTest() {
             form.Clear(); sel = -1; BuildFields();
         }
         // ---- header row: the View button follows the size text ----
-        { int w0 = form.w, h0 = form.h, g0 = grid; form.w = 1920; form.h = 1080; grid = 16; Check(ViewX() + VIEW_W < ZSPIN_X - 50 && ViewX() > 430, "header: with the biggest numbers the View button still clears the size text and the Zoom label");
+        { int w0 = form.w, h0 = form.h, g0 = grid; form.w = 1920; form.h = 1080; grid = 16; Check(ViewX() + VIEW_W < ZSPIN_X - 8 && ViewX() > 430, "header: with the biggest numbers the View button still clears the size text and the Zoom label");
           form.w = 32; form.h = 32; grid = 1; int vsmall = ViewX(); Check(vsmall < ViewX() + 1 && vsmall > 430 + 40, "header: with small numbers it sits right after the text"); form.w = 1920; Check(ViewX() > vsmall, "header: ... and moves right when the numbers get longer");
           form.w = w0; form.h = h0; grid = g0; }
         Check(std::string(Info(C_PUSHBUTTON).title) == "Push Button" && std::string(Info(C_RICHTEXT).title) == "Rich Text" && std::string(Info(C_COLORPICKER).title) == "Color Picker" && std::string(Info(C_LABEL).title) == "Label", "labels: the toolbox names are in Title Case");
@@ -2689,7 +2801,7 @@ static void SelfTest() {
         }
         {   // SuperControl::GetControlType
             using CT = SuperControl::ControlType;
-            { form.Clear(); bool all = true; std::vector<int> seen; CT want[C_COUNT] = { CT::Label, CT::PushButton, CT::CheckBox, CT::RadioButton, CT::ProgressBar, CT::SpinBox, CT::Slider, CT::TextBox, CT::InputBox, CT::TimeBox, CT::DateBox, CT::ListBox, CT::ComboBox, CT::TabBar, CT::Menu, CT::Gauge, CT::Graph, CT::UserDraw, CT::ColorPicker, CT::RichText };
+            { form.Clear(); bool all = true; std::vector<int> seen; CT want[C_COUNT] = { CT::Label, CT::PushButton, CT::CheckBox, CT::RadioButton, CT::ProgressBar, CT::SpinBox, CT::Slider, CT::TextBox, CT::InputBox, CT::TimeBox, CT::DateBox, CT::ListBox, CT::ComboBox, CT::TabBar, CT::Menu, CT::Gauge, CT::Graph, CT::UserDraw, CT::ColorPicker, CT::RichText, CT::Dial };
               for (int t = 0; t < C_COUNT; ++t) { form.Clear(); Place(t, 8, 8); auto k = MakeControl(&scr, form.items[0], 0, 0); CT got = k->GetControlType(); all = all && got == want[t] && got != CT::User; seen.push_back((int)got); }
               std::sort(seen.begin(), seen.end()); bool uniq = std::unique(seen.begin(), seen.end()) == seen.end();
               Check(all && uniq, "control type: every control the designer can make reports its own, different ControlType (a SpinBox is a SpinBox, not a TextBox)");
@@ -2949,7 +3061,7 @@ void setup() {
         FD::GenResult r = FD::WriteDesigner(form, form.outDir);
         printf("%s %s\n", r.ok ? (r.unchanged ? "up to date:" : "generated:") : "FAILED:", r.ok ? r.path.c_str() : r.error.c_str());
         FD::UserResult u = r.ok ? FD::WriteUserFile(form, form.outDir) : FD::UserResult();
-        if (r.ok) { printf("%s %s\n", u.ok ? (u.created ? "created:  " : "replaced: ") : "FAILED:   ", u.ok ? u.path.c_str() : u.error.c_str()); for (auto& h : u.missing) printf("  not in %s yet: %s\n", FD::UserFileName(form).c_str(), h.c_str()); SaveForm(); }
+        if (r.ok) { printf("%s %s\n", u.ok ? (u.created ? "created:  " : "kept old, wrote: ") : "FAILED:   ", u.ok ? u.path.c_str() : u.error.c_str()); for (auto& h : u.missing) printf("  not in %s yet: %s\n", FD::UserFileName(form).c_str(), h.c_str()); SaveForm(); }
         fflush(stdout); exit(r.ok && u.ok ? 0 : 1);
     }
     if (getenv("FD_ZOOM")) { if (getenv("FD_ZOOM")[0] == 'f') ZoomFit(); else ZoomCentre(atoi(getenv("FD_ZOOM"))); }   // FD_ZOOM=fit | percent
