@@ -450,7 +450,14 @@ inline std::string GenerateUserFile(const DForm& f) {
       << "#pragma once\n#include \"" << DesignerFileName(f) << "\"\n\n"
       << "class " << f.name << " : public " << base << " {\npublic:\n"
       << "    " << f.name << "(lgfx::LovyanGFX* dst, SuperEncoder* enc, SuperButton* btnA, SuperButton* btnB, SuperTouch* touch = nullptr) : " << base << "(dst, enc, btnA, btnB, touch) {\n"
-      << "        // Your start-up code: set initial values, e.g. " << (f.items.empty() ? "someControl.ColFg = 0xFFE0" : f.items[0].name + ".ColFg = 0xFFE0") << ".\n    }\n";
+      << "        // Your start-up code: set initial values, e.g. " << (f.items.empty() ? "someControl.ColFg = 0xFFE0" : f.items[0].name + ".ColFg = 0xFFE0") << ".\n"
+      << "\n        // Settings for EVERY control at once (SuperForm). Uncomment what you need:\n"
+      << "        // Form.SetAbort(Quitting);                    // bool Quitting(): return true to cancel a running edit (e.g. the window was closed)\n"
+      << "        // Form.ApplyTheme(SuperTheme::Dark());        // one theme for all controls (sizes can change: clear the screen and Show() afterwards)\n"
+      << "        // Form.SetBorderStyle(SuperControl::BORDER_SLEEK);   // one border style for all controls\n"
+      << "        // Form.SetEnabled(false);                     // enable / dim every control\n"
+      << "        // Form.ForEach([](SuperControl* c, void*) { c->SetPadding(4); });   // anything else: your own function for every control\n"
+      << "    }\n";
     auto h = HandlerNames(f);
     if (!h.empty()) {
         o << "\nprotected:\n";

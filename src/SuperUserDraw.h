@@ -80,9 +80,11 @@ public:
     uint32_t DeltaMs() const { return Delta; }
     SuperRect GetBodyRect() { return { Inset(), BoxOffsetPublic() + Inset(), InnerW(), BodyH }; }
 
-    // Auto-redraw clock: true when a redraw is due (SuperForm then redraws the control in its proper look). Without a form call Update().
+    // Redraw clock (a pending Repaint() / Invalidate(), or the auto-redraw interval): true when a redraw is due (SuperForm then redraws the control in its proper look). Without a form call Update().
     bool Tick() override {
-        if (AutoMs <= 0 || !IsVisible()) return false;
+        if (!IsVisible()) return false;
+        if (Dirty) return true;                                  // Repaint() / Invalidate() / a changed property was requested from your code: draw it now
+        if (AutoMs <= 0) return false;
         uint32_t now = lgfx::millis();
         if (now - LastTick < (uint32_t)AutoMs) return false;
         LastTick = now;
